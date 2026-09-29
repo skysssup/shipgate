@@ -1,6 +1,6 @@
 # Shipgate
 
-Safe auto-ship for coding agents: opt-in per repo, secret scanning, safety levels, undo, busy-aware shipping.
+Safe auto-ship for coding agents: opt-in per repo, secret scan (OpenAI, Anthropic, GitHub, Slack, Stripe, Google API, npm, AWS, JWT, PEM, `.env`)ning, safety levels, undo, busy-aware shipping.
 
 When your agent finishes a turn, Shipgate can stage → scan → commit → push — under a policy you chose.
 
@@ -80,6 +80,10 @@ apps/web        interactive safety-matrix demo (GitHub Pages)
 npm test
 npm run build
 ```
+
+## Version
+
+1.0.1
 
 ## License
 
