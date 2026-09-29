@@ -1,0 +1,27 @@
+[
+  {
+    "id": "secret-env",
+    "label": "Secret in .env",
+    "description": "Real OpenAI key staged in .env — should block at every level."
+  },
+  {
+    "id": "placeholder-example",
+    "label": "Placeholder in .env.example",
+    "description": "Template file with your-api-key-here — should ship cleanly."
+  },
+  {
+    "id": "public-repo",
+    "label": "Public remote",
+    "description": "Clean diff on a public GitHub remote — strict blocks, balanced warns."
+  },
+  {
+    "id": "busy-agent",
+    "label": "Busy agent",
+    "description": "Another live agent mid-turn — ship deferred (hold)."
+  },
+  {
+    "id": "clean-feature",
+    "label": "Clean feature",
+    "description": "Ordinary feature diff, private remote — ship."
+  }
+]

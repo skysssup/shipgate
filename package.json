@@ -1,0 +1,25 @@
+{
+  "name": "shipgate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Safe auto-ship for coding agents: opt-in per repo, secret scanning, safety levels, undo.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @shipgate/core && npm run build -w @shipgate/cli && npm run build -w @shipgate/web",
+    "test": "npm run test -w @shipgate/core && npm run test -w @shipgate/cli",
+    "dev:web": "npm run dev -w @shipgate/web"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "skysssup <291946563+skysssup@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skysssup/shipgate.git"
+  },
+  "homepage": "https://skysssup.github.io/shipgate/"
+}

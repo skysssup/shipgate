@@ -1,0 +1,29 @@
+{
+  "name": "@shipgate/cli",
+  "version": "1.0.0",
+  "description": "Shipgate CLI — safe auto-ship for coding agents",
+  "type": "module",
+  "bin": {
+    "shipgate": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@shipgate/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
