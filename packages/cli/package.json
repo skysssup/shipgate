@@ -1,7 +1,7 @@
 {
   "name": "@shipgate/cli",
-  "version": "1.0.0",
-  "description": "Shipgate CLI — safe auto-ship for coding agents",
+  "version": "1.0.1",
+  "description": "Shipgate CLI \u2014 safe auto-ship for coding agents",
   "type": "module",
   "bin": {
     "shipgate": "./dist/bin.js"

@@ -274,3 +274,17 @@ h1 {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.5rem 1rem;
+  z-index: 100;
+}
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+}

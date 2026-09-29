@@ -1,6 +1,6 @@
 {
   "name": "shipgate",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Safe auto-ship for coding agents: opt-in per repo, secret scanning, safety levels, undo.",
   "workspaces": [

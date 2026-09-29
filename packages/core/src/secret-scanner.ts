@@ -122,6 +122,21 @@ const RULES: Rule[] = [
     },
   },
   {
+    id: 'stripe-key',
+    confidence: 'high',
+    test: (c) => firstMatch(c, /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/),
+  },
+  {
+    id: 'google-api-key',
+    confidence: 'medium',
+    test: (c) => firstMatch(c, /\bAIza[0-9A-Za-z\-_]{35}\b/),
+  },
+  {
+    id: 'npm-token',
+    confidence: 'high',
+    test: (c) => firstMatch(c, /\bnpm_[A-Za-z0-9]{36,}\b/),
+  },
+  {
     id: 'jwt',
     confidence: 'medium',
     test: (c) =>

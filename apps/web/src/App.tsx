@@ -61,6 +61,7 @@ export function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#simulator">Skip to simulator</a>
       <header className="hero">
         <div>
           <div className="badge">Shipgate · policy simulator</div>
@@ -83,7 +84,7 @@ export function App() {
         </div>
       </header>
 
-      <section className="panel" aria-labelledby="matrix-title">
+      <section id="simulator" className="panel" aria-labelledby="matrix-title">
         <h2 id="matrix-title">Safety matrix</h2>
         <div className="grid-2">
           <div>

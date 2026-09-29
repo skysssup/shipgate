@@ -101,6 +101,30 @@ describe('scanSecrets', () => {
     expect(f.some((x) => x.ruleId === 'private-key-pem')).toBe(true);
   });
 
+  it('detects Stripe live keys', () => {
+    // Construct at runtime so the repo never stores a scanner-shaped literal.
+    const fake = ['sk', 'live', 'abcdefghijklmnopqrstuvwxyz12'].join('_');
+    const f = scanSecrets([{ path: 'pay.ts', content: `key=${fake}` }]);
+    expect(f.some((x) => x.ruleId === 'stripe-key')).toBe(true);
+  });
+
+  it('detects Google API keys', () => {
+    const f = scanSecrets([
+      { path: 'g.ts', content: ['AIza', 'SyA1234567890ABCDEFGHIJKLMNOPQRSTUV'].join('') },
+    ]);
+    expect(f.some((x) => x.ruleId === 'google-api-key')).toBe(true);
+  });
+
+  it('detects npm tokens', () => {
+    const f = scanSecrets([
+      {
+        path: '.npmrc',
+        content: '//registry.npmjs.org/:_authToken=' + ['npm', 'abcdefghijklmnopqrstuvwxyz0123456789'].join('_'),
+      },
+    ]);
+    expect(f.some((x) => x.ruleId === 'npm-token')).toBe(true);
+  });
+
   it('detects JWT-ish tokens', () => {
     const f = scanSecrets([
       {
