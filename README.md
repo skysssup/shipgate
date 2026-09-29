@@ -60,6 +60,8 @@ Exit codes stay agent-safe: soft holds/blocks exit `0`. Noise goes to stderr.
 
 Template files (`*.example`, `*.sample`, `*.template`, `*.dist`) and obvious placeholders (`your-*-here`, `EXAMPLE`, `xxxx`) are exempt.
 
+Public-remote detection uses `gh repo view` when available so private GitHub remotes are not false-positives; without `gh`, `github.com` remotes are treated as public (safe default for `strict`).
+
 Commits always carry the trailer `Shipped-by: shipgate`. `undo` only touches those commits.
 
 ## Busy-aware shipping

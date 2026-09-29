@@ -41,12 +41,29 @@ export function gitDir(git: GitRunner): string | null {
   }
 }
 
+/** Parse a git status --porcelain path field (handles renames + quotes). */
+export function parsePorcelainPath(pathField: string): string {
+  let p = pathField.trim();
+  if (p.includes(' -> ')) {
+    p = p.slice(p.lastIndexOf(' -> ') + 4).trim();
+  }
+  if (p.startsWith('"') && p.endsWith('"')) {
+    p = p.slice(1, -1).replace(/\\([\\"ntr])/g, (_, ch: string) => {
+      if (ch === 'n') return '\n';
+      if (ch === 't') return '\t';
+      if (ch === 'r') return '\r';
+      return ch;
+    });
+  }
+  return p;
+}
+
 export function dirtyFiles(git: GitRunner): string[] {
   const out = git.run(['status', '--porcelain'], { allowFail: true });
   if (!out.trim()) return [];
   return out
     .split('\n')
-    .map((line) => line.slice(3).trim())
+    .map((line) => parsePorcelainPath(line.slice(3)))
     .filter(Boolean);
 }
 
@@ -64,6 +81,10 @@ export function remoteUrl(git: GitRunner): string | null {
   }
 }
 
+export function hasOrigin(git: GitRunner): boolean {
+  return Boolean(remoteUrl(git));
+}
+
 export function currentBranch(git: GitRunner): string {
   return git.run(['rev-parse', '--abbrev-ref', 'HEAD'], { allowFail: true }) || 'HEAD';
 }
@@ -74,4 +95,13 @@ export function headMessage(git: GitRunner): string {
 
 export function headSha(git: GitRunner): string {
   return git.run(['rev-parse', 'HEAD'], { allowFail: true });
+}
+
+export function parentExists(git: GitRunner): boolean {
+  try {
+    git.run(['rev-parse', '--verify', 'HEAD~1']);
+    return true;
+  } catch {
+    return false;
+  }
 }

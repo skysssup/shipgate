@@ -16,8 +16,7 @@
     }
   },
   "files": [
-    "dist",
-    "fixtures"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

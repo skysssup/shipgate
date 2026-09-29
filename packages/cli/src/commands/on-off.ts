@@ -7,6 +7,7 @@ import {
   removeRepoConfig,
 } from '../config.js';
 import { createGit, gitRoot, remoteUrl } from '../git.js';
+import { detectPublicRemote } from '../remote-public.js';
 
 function err(msg: string): void {
   process.stderr.write(`shipgate: ${msg}\n`);
@@ -33,7 +34,7 @@ export function runOn(opts: OnOptions = {}): number {
 
   const level = parseLevel(opts.level);
   const url = remoteUrl(git);
-  const looksPublic = Boolean(url && /github\.com[:/]/i.test(url));
+  const looksPublic = detectPublicRemote(url);
 
   if (looksPublic && !opts.publicOk) {
     err(

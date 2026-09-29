@@ -146,6 +146,13 @@ h1 {
   font: inherit;
 }
 
+
+.level:focus-visible,
+.scenario:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .level[aria-pressed="true"] {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(91,157,255,0.15);
