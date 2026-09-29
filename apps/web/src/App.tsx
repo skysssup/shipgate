@@ -64,7 +64,7 @@ export function App() {
       <a className="skip-link" href="#simulator">Skip to simulator</a>
       <header className="hero">
         <div>
-          <div className="badge">Shipgate · policy simulator</div>
+          <div className="badge">Shipgate 1.0.1 · policy simulator</div>
           <h1>Safe auto-ship for coding agents</h1>
           <p className="lead">
             Pick a safety level and a diff scenario. RunPlan shows ship, hold, or
