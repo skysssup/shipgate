@@ -134,6 +134,39 @@ describe('scanSecrets', () => {
     expect(f).toHaveLength(0);
   });
 
+
+  it('detects sk-proj OpenAI keys', () => {
+    const f = scanSecrets([
+      {
+        path: 'k.ts',
+        content: 'KEY=sk-proj-abcdefghijklmnopqrstuvwxyz1234567890AB',
+      },
+    ]);
+    expect(f.some((x) => x.ruleId === 'openai-key')).toBe(true);
+  });
+
+  it('detects github_pat fine-grained tokens', () => {
+    const f = scanSecrets([
+      {
+        path: 't.txt',
+        content:
+          'github_pat_11AAAAAAA0123456789_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV',
+      },
+    ]);
+    expect(f.some((x) => x.ruleId === 'github-token')).toBe(true);
+  });
+
+  it('does not classify anthropic keys as openai', () => {
+    const f = scanSecrets([
+      {
+        path: 'a.ts',
+        content: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345',
+      },
+    ]);
+    expect(f.some((x) => x.ruleId === 'anthropic-key')).toBe(true);
+    expect(f.some((x) => x.ruleId === 'openai-key')).toBe(false);
+  });
+
   it('returns structured path + ruleId', () => {
     const f = scanSecrets([
       { path: 'src/keys.ts', content: 'sk-abcdefghijklmnopqrstuvwxyz' },

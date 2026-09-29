@@ -1,8 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
 import { DEMO_SCENARIOS, planRun } from '@shipgate/core';
 
 const MIME: Record<string, string> = {
@@ -30,6 +29,14 @@ export function findWebDist(): string | null {
   return null;
 }
 
+function safeDecode(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
 export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
   const dist = findWebDist();
   const pages = 'https://skysssup.github.io/shipgate/';
@@ -44,7 +51,6 @@ export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
         'shipgate: local web dist not built — `npm run build -w @shipgate/web`\n',
       );
     }
-    // Print scenario plan matrix to stderr for agents
     for (const s of DEMO_SCENARIOS) {
       const r = planRun(s.input);
       process.stderr.write(`  [${s.id}] ${r.action}: ${r.reasons[0]}\n`);
@@ -58,24 +64,26 @@ export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
   }
 
   const port = opts.port ?? 4173;
+  const distRoot = normalize(dist.endsWith(sep) ? dist : dist + sep);
   const server = createServer((req, res) => {
-    const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+    const urlPath = safeDecode((req.url || '/').split('?')[0] || '/');
     let rel = urlPath === '/' ? '/index.html' : urlPath;
-    // Strip /shipgate/ base if present
     if (rel.startsWith('/shipgate/')) rel = rel.slice('/shipgate'.length);
-    const filePath = normalize(join(dist, rel));
-    if (!filePath.startsWith(dist)) {
+    const filePath = normalize(join(distRoot, '.' + rel));
+    if (!filePath.startsWith(distRoot)) {
       res.writeHead(403);
       res.end('forbidden');
       return;
     }
     try {
       const data = readFileSync(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[extname(filePath)] || 'application/octet-stream' });
+      res.writeHead(200, {
+        'Content-Type': MIME[extname(filePath)] || 'application/octet-stream',
+      });
       res.end(data);
     } catch {
       try {
-        const data = readFileSync(join(dist, 'index.html'));
+        const data = readFileSync(join(distRoot, 'index.html'));
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(data);
       } catch {
@@ -86,7 +94,9 @@ export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
   });
 
   server.listen(port, '127.0.0.1', () => {
-    process.stderr.write(`shipgate: serving ${dist} at http://127.0.0.1:${port}/\n`);
+    process.stderr.write(
+      `shipgate: serving ${dist} at http://127.0.0.1:${port}/\n`,
+    );
   });
   return 0;
 }

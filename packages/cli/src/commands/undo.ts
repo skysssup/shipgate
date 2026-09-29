@@ -3,8 +3,10 @@ import {
   createGit,
   currentBranch,
   gitRoot,
+  hasOrigin,
   headMessage,
   headSha,
+  parentExists,
 } from '../git.js';
 
 export interface UndoResult {
@@ -36,20 +38,32 @@ export function runUndo(opts: { cwd?: string } = {}): UndoResult {
     };
   }
 
-  const sha = headSha(git);
-  const branch = currentBranch(git);
-
-  try {
-    git.run(['push', '--force-with-lease', 'origin', `HEAD~1:${branch}`]);
-  } catch (e) {
-    err(
-      `remote force-with-lease failed (remote moved?): ${(e as Error).message}`,
-    );
+  if (!parentExists(git)) {
+    err('refuse: shipgate commit is the only commit (no parent to reset to)');
     return {
       exitCode: 0,
       undone: false,
-      reason: 'remote force-with-lease failed',
+      reason: 'no parent commit',
     };
+  }
+
+  const sha = headSha(git);
+  const branch = currentBranch(git);
+  const remote = hasOrigin(git);
+
+  if (remote) {
+    try {
+      git.run(['push', '--force-with-lease', 'origin', `HEAD~1:${branch}`]);
+    } catch (e) {
+      err(
+        `remote force-with-lease failed (remote moved?): ${(e as Error).message}`,
+      );
+      return {
+        exitCode: 0,
+        undone: false,
+        reason: 'remote force-with-lease failed',
+      };
+    }
   }
 
   try {
@@ -59,6 +73,7 @@ export function runUndo(opts: { cwd?: string } = {}): UndoResult {
     return { exitCode: 1, undone: false, reason: 'local reset failed' };
   }
 
-  err(`undid ${sha.slice(0, 7)} — changes left in working tree`);
+  const where = remote ? '' : ' (local only — no origin)';
+  err(`undid ${sha.slice(0, 7)} — changes left in working tree${where}`);
   return { exitCode: 0, undone: true, reason: `undid ${sha.slice(0, 7)}` };
 }

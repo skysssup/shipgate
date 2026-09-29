@@ -7,7 +7,6 @@ import {
   shouldDeferShip,
   sweepBusy,
   type SafetyLevel,
-  type SecretFinding,
 } from '@shipgate/core';
 import { agentReview } from '../agent-review.js';
 import {
@@ -21,9 +20,11 @@ import {
   dirtyFiles,
   gitDir,
   gitRoot,
+  hasOrigin,
   remoteUrl,
   stagedDiffNames,
 } from '../git.js';
+import { detectPublicRemote } from '../remote-public.js';
 import { loadFilesForScan } from '../scan-workdir.js';
 
 export interface ShipOptions {
@@ -49,10 +50,12 @@ function err(msg: string): void {
   process.stderr.write(`shipgate: ${msg}\n`);
 }
 
-function detectPublicRemote(url: string | null, override?: boolean): boolean {
-  if (typeof override === 'boolean') return override;
-  if (!url) return false;
-  return /github\.com[:/]/i.test(url);
+function unstageAll(git: ReturnType<typeof createGit>): void {
+  try {
+    git.run(['reset', 'HEAD'], { allowFail: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
@@ -80,19 +83,20 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
   }
   const gdir = resolve(root, gdirRaw);
 
+  // Check other agents BEFORE marking ourselves — avoids mutual-defer deadlock.
+  sweepBusy(gdir);
+  if (shouldDeferShip(gdir)) {
+    const { live } = sweepBusy(gdir);
+    err(`busy: ${live.length} agent(s) mid-turn — shipping deferred`);
+    return {
+      exitCode: 0,
+      action: 'hold',
+      reasons: [`${live.length} other agent(s) busy`],
+    };
+  }
+
   markBusy(gdir, { label: 'ship' });
   try {
-    sweepBusy(gdir);
-    if (shouldDeferShip(gdir)) {
-      const { live } = sweepBusy(gdir);
-      err(`busy: ${live.length} agent(s) mid-turn — shipping deferred`);
-      return {
-        exitCode: 0,
-        action: 'hold',
-        reasons: [`${live.length} other agent(s) busy`],
-      };
-    }
-
     try {
       git.run(['add', '-A']);
     } catch (e) {
@@ -116,7 +120,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     const { findings } = loadFilesForScan(root, targets);
     const url = remoteUrl(git);
     const publicOk = Boolean(cfg.publicOk || opts.publicOk);
-    const isPublic = publicOk ? false : detectPublicRemote(url, opts.isPublic);
+    const isPublic = detectPublicRemote(url, opts.isPublic);
 
     const level = cfg.level as SafetyLevel;
     const plan = planRun({
@@ -137,11 +141,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
     if (plan.action === 'block') {
       for (const r of plan.reasons) err(r);
-      try {
-        git.run(['reset', 'HEAD'], { allowFail: true });
-      } catch {
-        /* ignore */
-      }
+      unstageAll(git);
       return { exitCode: 0, action: 'block', reasons: plan.reasons };
     }
 
@@ -170,6 +170,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     }
 
     if (reviewHold) {
+      unstageAll(git);
       return {
         exitCode: 0,
         action: 'hold',
@@ -202,11 +203,15 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     }
 
     const sha = git.run(['rev-parse', '--short', 'HEAD'], { allowFail: true });
-    err(`shipped ${sha} — ${subject}`);
+    err(`shipped ${sha} — ${subject}${pushed.localOnly ? ' (local only)' : ''}`);
     return {
       exitCode: 0,
       action: 'ship',
-      reasons: [`shipped ${sha}`],
+      reasons: [
+        pushed.localOnly
+          ? `committed ${sha} locally (no origin)`
+          : `shipped ${sha}`,
+      ],
       sha,
     };
   } finally {
@@ -217,7 +222,14 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 function pushWithRebaseOnce(
   git: ReturnType<typeof createGit>,
   branch: string,
-): { ok: boolean; message: string } {
+): { ok: boolean; message: string; localOnly?: boolean } {
+  if (!hasOrigin(git)) {
+    return {
+      ok: true,
+      message: 'committed locally (no origin remote)',
+      localOnly: true,
+    };
+  }
   try {
     git.run(['push', '-u', 'origin', 'HEAD']);
     return { ok: true, message: 'pushed' };
@@ -239,8 +251,4 @@ function pushWithRebaseOnce(
       };
     }
   }
-}
-
-export function summarizeFindings(findings: SecretFinding[]): string {
-  return findings.map((f) => `${f.ruleId}@${f.path}`).join(', ');
 }

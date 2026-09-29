@@ -66,9 +66,8 @@ export function App() {
           <div className="badge">Shipgate · policy simulator</div>
           <h1>Safe auto-ship for coding agents</h1>
           <p className="lead">
-            Opt-in per repo. Secret scanning. Safety levels. Busy-aware shipping.
-            Undo. Optional LLM review. Pick a level and a scenario — see whether
-            RunPlan ships, holds, or blocks.
+            Pick a safety level and a diff scenario. RunPlan shows ship, hold, or
+            block — the same decision the CLI uses.
           </p>
         </div>
         <div className="hero-actions">
@@ -78,14 +77,7 @@ export function App() {
           >
             GitHub
           </a>
-          <a
-            className="btn"
-            href="https://www.npmjs.com/package/@shipgate/cli"
-            onClick={(e) => {
-              // package may not be published yet — still fine as link
-              e.currentTarget;
-            }}
-          >
+          <a className="btn" href="https://www.npmjs.com/package/@shipgate/cli">
             npm
           </a>
         </div>

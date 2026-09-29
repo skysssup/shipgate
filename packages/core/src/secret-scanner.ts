@@ -49,15 +49,19 @@ function redact(s: string, max = 24): string {
 function firstMatch(
   content: string,
   re: RegExp,
-  filter?: (m: string) => boolean,
+  filter?: (m: string, groups: string[]) => boolean,
 ): string | null {
   const flags = re.flags.includes('g') ? re.flags : re.flags + 'g';
   const global = new RegExp(re.source, flags);
   let m: RegExpExecArray | null;
   while ((m = global.exec(content)) !== null) {
     const hit = m[0];
-    if (isPlaceholderValue(hit)) continue;
-    if (filter && !filter(hit)) continue;
+    const groups = m.slice(1);
+    const valueForPlaceholder = groups.find(Boolean) ?? hit;
+    if (isPlaceholderValue(valueForPlaceholder) || isPlaceholderValue(hit)) {
+      continue;
+    }
+    if (filter && !filter(hit, groups)) continue;
     return hit;
   }
   return null;
@@ -82,7 +86,9 @@ const RULES: Rule[] = [
   {
     id: 'openai-key',
     confidence: 'high',
-    test: (c) => firstMatch(c, /\bsk-[A-Za-z0-9]{20,}\b/),
+    // OpenAI keys: sk-…, sk-proj-…, sk-svcacct-… — exclude Anthropic sk-ant-
+    test: (c) =>
+      firstMatch(c, /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/),
   },
   {
     id: 'anthropic-key',
@@ -93,7 +99,10 @@ const RULES: Rule[] = [
     id: 'github-token',
     confidence: 'high',
     test: (c) =>
-      firstMatch(c, /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b/),
+      firstMatch(
+        c,
+        /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
+      ),
   },
   {
     id: 'slack-token',
@@ -115,13 +124,11 @@ const RULES: Rule[] = [
   {
     id: 'jwt',
     confidence: 'medium',
-    test: (c) => {
-      const hit = firstMatch(
+    test: (c) =>
+      firstMatch(
         c,
         /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
-      );
-      return hit;
-    },
+      ),
   },
   {
     id: 'dotenv-file',

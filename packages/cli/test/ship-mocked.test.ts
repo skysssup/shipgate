@@ -148,4 +148,110 @@ describe('runShip with mocked git', () => {
     expect(result.action).toBe('ship');
     expect(review).toHaveBeenCalled();
   });
+
+  it('holds when another live agent marker exists (check before mark)', async () => {
+    const root = tmpRepo();
+    writeRepoConfig(root, {
+      enabled: true,
+      level: 'yolo',
+      agentReview: false,
+      publicOk: true,
+    });
+    writeFileSync(join(root, 'a.ts'), 'export {};\n');
+    const { markBusy, clearBusy, isPidAlive } = await import('@shipgate/core');
+    const otherPid = process.ppid;
+    if (!isPidAlive(otherPid) || otherPid === process.pid) {
+      // Environment without a usable other pid — skip assertion soft
+      return;
+    }
+    markBusy(join(root, '.git'), { pid: otherPid, label: 'other' });
+    try {
+      const git = mockGit([], {
+        'rev-parse --show-toplevel': root,
+        'rev-parse --git-dir': join(root, '.git'),
+        'status --porcelain': ' M a.ts',
+        'diff --cached --name-only': 'a.ts',
+      });
+      const result = await runShip({ cwd: root, git, isPublic: false });
+      expect(result.action).toBe('hold');
+      expect(result.exitCode).toBe(0);
+    } finally {
+      clearBusy(join(root, '.git'), otherPid);
+    }
+  });
+
+  it('ships locally when origin is missing', async () => {
+    const root = tmpRepo();
+    writeRepoConfig(root, {
+      enabled: true,
+      level: 'balanced',
+      agentReview: false,
+      publicOk: true,
+    });
+    writeFileSync(join(root, 'b.ts'), 'export {};\n');
+    const calls: string[][] = [];
+    const git = mockGit(calls, {
+      'rev-parse --show-toplevel': root,
+      'rev-parse --git-dir': join(root, '.git'),
+      'status --porcelain': ' M b.ts',
+      'diff --cached --name-only': 'b.ts',
+      'rev-parse --abbrev-ref HEAD': 'main',
+      'rev-parse --short HEAD': 'loc1234',
+    });
+    const base = git.run.bind(git);
+    git.run = (args, opts) => {
+      if (args.join(' ') === 'remote get-url origin') {
+        throw new Error('No such remote');
+      }
+      return base(args, opts);
+    };
+    const result = await runShip({
+      cwd: root,
+      git,
+      message: 'feat: local',
+      isPublic: false,
+    });
+    expect(result.action).toBe('ship');
+    expect(result.reasons.some((r) => /local/i.test(r))).toBe(true);
+    expect(calls.some((c) => c[0] === 'push')).toBe(false);
+  });
+
+  it('agent review hold unstages', async () => {
+    const root = tmpRepo();
+    writeRepoConfig(root, {
+      enabled: true,
+      level: 'balanced',
+      agentReview: true,
+      publicOk: true,
+    });
+    writeFileSync(join(root, 'c.ts'), 'export {};\n');
+    const calls: string[][] = [];
+    const git = mockGit(calls, {
+      'rev-parse --show-toplevel': root,
+      'rev-parse --git-dir': join(root, '.git'),
+      'status --porcelain': ' M c.ts',
+      'diff --cached --name-only': 'c.ts',
+    });
+    const base = git.run.bind(git);
+    git.run = (args, opts) => {
+      if (args.join(' ') === 'remote get-url origin') {
+        throw new Error('No such remote');
+      }
+      return base(args, opts);
+    };
+    const review = vi.fn(async () => ({
+      decision: 'hold' as const,
+      reason: 'WIP',
+      failOpen: false,
+    }));
+    const result = await runShip({
+      cwd: root,
+      git,
+      review,
+      isPublic: false,
+    });
+    expect(result.action).toBe('hold');
+    expect(calls.some((c) => c[0] === 'reset')).toBe(true);
+  });
+
 });

@@ -50,9 +50,6 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
           'strict: public remote requires --public-ok (or on --public-ok)',
         );
       }
-      if (ctx.flags.forceSecrets && !publicOk && ctx.isPublicRemote) {
-        // already blocked above
-      }
       recommendHumanGate = true;
       recommendLlmGate = true;
       break;
@@ -95,8 +92,6 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
     }
   }
 
-  // Force-push is never allowed by core policy (CLI must not pass --force)
-  // Represented as a hard rule callers should respect.
   return {
     allow: blockReasons.length === 0,
     blockReasons,
