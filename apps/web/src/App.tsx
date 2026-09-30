@@ -65,10 +65,9 @@ export function App() {
       <header className="hero">
         <div>
           <div className="badge">Shipgate 1.0.1 · policy simulator</div>
-          <h1>Safe auto-ship for coding agents</h1>
+          <h1>Shipgate policy simulator</h1>
           <p className="lead">
-            Pick a safety level and a diff scenario. RunPlan shows ship, hold, or
-            block — the same decision the CLI uses.
+            This page runs planRun in the browser. It does not touch your git repo.
           </p>
         </div>
         <div className="hero-actions">

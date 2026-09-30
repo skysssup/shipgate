@@ -1,6 +1,6 @@
 # Shipgate
 
-Safe auto-ship for coding agents: opt-in per repo, secret scan (OpenAI, Anthropic, GitHub, Slack, Stripe, Google API, npm, AWS, JWT, PEM, `.env`)ning, safety levels, undo, busy-aware shipping.
+Shipgate scans the working tree for common secrets, then can commit and push under an opt-in per-repo policy. Undo rewinds commits that carry the trailer `Shipped-by: shipgate`.
 
 When your agent finishes a turn, Shipgate can stage → scan → commit → push — under a policy you chose.
 
@@ -8,10 +8,14 @@ When your agent finishes a turn, Shipgate can stage → scan → commit → push
 
 ## Install
 
+`@shipgate/cli` is not published on npm yet. From source:
+
 ```bash
-npm install -g @shipgate/cli
-# or from source
-git clone https://github.com/skysssup/shipgate && cd shipgate && npm install && npm run build && npm link -w @shipgate/cli
+git clone https://github.com/skysssup/shipgate
+cd shipgate
+npm install
+npm run build
+npm link -w @shipgate/cli
 ```
 
 ```bash
@@ -45,7 +49,7 @@ shipgate on             # opt-in (default level: balanced)
 
 - `-m / --message` — explicit subject (skips LLM gate)
 - `--prompt` — agent prompt text for subject / review
-- `--force-secrets` — override secret blocks (still logged)
+- `--force-secrets` — override secret blocks (still logged). Can ship real secrets; do not use casually.
 - `--public-ok` / `--confirm`
 
 Exit codes stay agent-safe: soft holds/blocks exit `0`. Noise goes to stderr.
@@ -56,7 +60,7 @@ Exit codes stay agent-safe: soft holds/blocks exit `0`. Noise goes to stderr.
 | --- | --- | --- | --- |
 | **strict** | block | block unless `--public-ok` | Requires `.shipgate.json`; human + LLM gates recommended |
 | **balanced** | block | warn | Default; good for day-to-day agent work |
-| **yolo** | block high-confidence unless `--force-secrets` | warn | Medium findings allowed with warning |
+| **yolo** | block high-confidence unless `--force-secrets` | warn | Medium findings allowed with warning. `--force-secrets` can still ship secrets — that is the point of the flag. |
 
 Template files (`*.example`, `*.sample`, `*.template`, `*.dist`) and obvious placeholders (`your-*-here`, `EXAMPLE`, `xxxx`) are exempt.
 
