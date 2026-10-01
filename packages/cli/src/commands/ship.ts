@@ -58,6 +58,18 @@ function unstageAll(git: ReturnType<typeof createGit>): void {
   }
 }
 
+/** Restore the index to a previously staged name list (best-effort). */
+function restoreStaged(git: ReturnType<typeof createGit>, previouslyStaged: string[]): void {
+  unstageAll(git);
+  for (const name of previouslyStaged) {
+    try {
+      git.run(['add', '--', name], { allowFail: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
   const cwd = opts.cwd ?? process.cwd();
   const git = opts.git ?? createGit(cwd);
@@ -97,10 +109,12 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
   markBusy(gdir, { label: 'ship' });
   try {
+    const previouslyStaged = stagedDiffNames(git);
     try {
       git.run(['add', '-A']);
     } catch (e) {
       err(`git add failed: ${(e as Error).message}`);
+      restoreStaged(git, previouslyStaged);
       return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
     }
 
@@ -141,7 +155,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
     if (plan.action === 'block') {
       for (const r of plan.reasons) err(r);
-      unstageAll(git);
+      restoreStaged(git, previouslyStaged);
       return { exitCode: 0, action: 'block', reasons: plan.reasons };
     }
 
@@ -170,7 +184,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     }
 
     if (reviewHold) {
-      unstageAll(git);
+      restoreStaged(git, previouslyStaged);
       return {
         exitCode: 0,
         action: 'hold',

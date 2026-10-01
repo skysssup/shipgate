@@ -6,6 +6,9 @@ When your agent finishes a turn, Shipgate can stage → scan → commit → push
 
 **Live demo:** https://skysssup.github.io/shipgate/
 
+
+Blocked or held ships restore your previously staged index instead of wiping it with `git reset`.
+
 ## Install
 
 `@shipgate/cli` is not published on npm yet. From source:

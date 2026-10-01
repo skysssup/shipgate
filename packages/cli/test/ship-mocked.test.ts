@@ -254,4 +254,51 @@ describe('runShip with mocked git', () => {
     expect(calls.some((c) => c[0] === 'reset')).toBe(true);
   });
 
+
+  it('preserves previously staged files on policy block', async () => {
+    const root = tmpRepo();
+    writeRepoConfig(root, {
+      enabled: true,
+      level: 'balanced',
+      agentReview: false,
+      publicOk: true,
+    });
+    writeFileSync(join(root, 'keep.ts'), 'export const keep = 1;\n');
+    writeFileSync(
+      join(root, '.env'),
+      'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456\n',
+    );
+    const calls: string[][] = [];
+    let staged = new Set<string>(['keep.ts']);
+    const git: GitRunner = {
+      run(args) {
+        calls.push(args);
+        const key = args.join(' ');
+        if (key === 'rev-parse --show-toplevel') return root;
+        if (key === 'rev-parse --git-dir') return join(root, '.git');
+        if (key === 'diff --cached --name-only') return [...staged].sort().join('\n');
+        if (key === 'status --porcelain') return 'M  keep.ts\n?? .env';
+        if (args[0] === 'add' && args[1] === '-A') {
+          staged = new Set(['keep.ts', '.env']);
+          return '';
+        }
+        if (args[0] === 'add' && args[1] === '--') {
+          for (const name of args.slice(2)) staged.add(name);
+          return '';
+        }
+        if (args[0] === 'reset' && args[1] === 'HEAD') {
+          staged = new Set();
+          return '';
+        }
+        if (key.startsWith('remote get-url')) return '';
+        return '';
+      },
+    };
+    const result = await runShip({ cwd: root, git, isPublic: false });
+    expect(result.action).toBe('block');
+    // After block, previously staged keep.ts must be restored (not wiped).
+    expect(staged.has('keep.ts')).toBe(true);
+    expect(calls.some((c) => c[0] === 'reset')).toBe(true);
+  });
+
 });

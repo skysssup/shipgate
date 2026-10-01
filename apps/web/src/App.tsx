@@ -66,6 +66,7 @@ export function App() {
         <div>
           <div className="badge">Shipgate 1.0.1 · policy simulator</div>
           <h1>Shipgate policy simulator</h1>
+          <p className="lede">Blocked ships keep your previously staged files; they do not wipe the index.</p>
           <p className="lead">
             This page runs planRun in the browser. It does not touch your git repo.
           </p>
