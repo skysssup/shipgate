@@ -105,3 +105,23 @@ export function parentExists(git: GitRunner): boolean {
     return false;
   }
 }
+
+/** Capture the current index as a tree OID (exact staged blob set). */
+export function snapshotIndexTree(git: GitRunner): string {
+  return git.run(['write-tree']);
+}
+
+/** Restore the index to a previously snapshotted tree OID (does not touch worktree). */
+export function restoreIndexTree(git: GitRunner, treeOid: string | null): void {
+  if (!treeOid) return;
+  try {
+    git.run(['read-tree', treeOid]);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Staged unified diff for optional external review (may be empty). */
+export function stagedPatch(git: GitRunner): string {
+  return git.run(['diff', '--cached', '--no-color'], { allowFail: true });
+}

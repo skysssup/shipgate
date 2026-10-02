@@ -1,20 +1,32 @@
 /**
- * Optional LLM review gate via OpenRouter (or OpenAI-compatible baseUrl).
- * Fail-open: missing key / timeout / bad reply → ship.
+ * Optional external model gate via OpenRouter (or OpenAI-compatible baseUrl).
+ *
+ * When agent review is enabled, this is fail-closed: missing key / HTTP error /
+ * unparseable output holds the ship. A redacted staged diff is sent (not merely
+ * filenames). Sending data off-machine is an explicit disclosure — enable only
+ * with consent via `shipgate on --agent`.
  */
+
+import { redactSecretsInText } from '@shipgate/core';
 
 export interface ReviewInput {
   apiKey?: string;
   model?: string;
   baseUrl?: string;
+  /** Filename list (always included for context). */
   diffSummary: string;
+  /** Staged unified diff; secrets are redacted before send. */
+  redactedDiff?: string;
   promptText?: string;
   commitSubjects?: string[];
+  /** When true (default for enabled agent review), missing key / errors hold. */
+  requireKey?: boolean;
 }
 
 export interface ReviewResult {
   decision: 'ship' | 'hold';
   reason: string;
+  /** Historical name: true means the gate could not run (treated as hold when requireKey). */
   failOpen: boolean;
 }
 
@@ -22,16 +34,21 @@ const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 const TIMEOUT_MS = 15_000;
 
 export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
+  const failClosed = input.requireKey !== false;
+
   if (!input.apiKey) {
     return {
-      decision: 'ship',
-      reason: 'no API key — fail-open',
+      decision: 'hold',
+      reason: 'no API key — agent review fail-closed',
       failOpen: true,
     };
   }
 
   const base = (input.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
   const model = input.model || DEFAULT_MODEL;
+  const diff = redactSecretsInText(
+    (input.redactedDiff || input.diffSummary || '').slice(0, 12000),
+  );
   const body = {
     model,
     temperature: 0,
@@ -39,14 +56,17 @@ export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
       {
         role: 'system',
         content:
-          'You review agent coding turns before git push. Reply JSON only: {"decision":"ship"|"hold","reason":"..."}. Hold WIP, debug prints, half-done features. Ship otherwise.',
+          'You review agent coding turns before git push. You receive a redacted staged diff. Reply JSON only: {"decision":"ship"|"hold","reason":"..."}. Hold WIP, debug prints, half-done features. Ship otherwise.',
       },
       {
         role: 'user',
         content: JSON.stringify({
+          disclosure:
+            'This payload is sent to an external model endpoint. Secrets are pattern-redacted but redaction is not guaranteed.',
           prompt: input.promptText?.slice(0, 2000) ?? null,
           recentSubjects: input.commitSubjects?.slice(0, 5) ?? [],
-          diffSummary: input.diffSummary.slice(0, 8000),
+          changedFiles: input.diffSummary.slice(0, 2000),
+          redactedDiff: diff,
         }),
       },
     ],
@@ -66,8 +86,8 @@ export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
     });
     if (!res.ok) {
       return {
-        decision: 'ship',
-        reason: `review HTTP ${res.status} — fail-open`,
+        decision: 'hold',
+        reason: `review HTTP ${res.status} — fail-closed`,
         failOpen: true,
       };
     }
@@ -78,16 +98,16 @@ export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
     const parsed = parseDecision(text);
     if (!parsed) {
       return {
-        decision: 'ship',
-        reason: 'unparseable review — fail-open',
+        decision: 'hold',
+        reason: 'unparseable review — fail-closed',
         failOpen: true,
       };
     }
     return { ...parsed, failOpen: false };
   } catch (err) {
     return {
-      decision: 'ship',
-      reason: `review error: ${(err as Error).message} — fail-open`,
+      decision: failClosed ? 'hold' : 'ship',
+      reason: `review error: ${(err as Error).message} — fail-closed`,
       failOpen: true,
     };
   } finally {

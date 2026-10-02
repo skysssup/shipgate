@@ -21,9 +21,10 @@ describe('parseLevel', () => {
     expect(parseLevel('strict')).toBe('strict');
     expect(parseLevel('yolo')).toBe('yolo');
   });
-  it('defaults unknown to balanced', () => {
-    expect(parseLevel('nope')).toBe('balanced');
+  it('defaults empty/undefined to balanced and rejects unknown', () => {
     expect(parseLevel(undefined)).toBe('balanced');
+    expect(parseLevel('')).toBe('balanced');
+    expect(() => parseLevel('nope')).toThrow(/unknown safety level/);
   });
 });
 

@@ -12,6 +12,7 @@ export type {
 export {
   scanSecrets,
   scanTextForSecrets,
+  redactSecretsInText,
   isPlaceholderValue,
   isExemptFilename,
   type ScanFile,
@@ -20,6 +21,7 @@ export {
 export {
   evaluatePolicy,
   parseLevel,
+  assertSafetyLevel,
   DEFAULT_LEVEL,
   type PolicyContext,
   type PolicyVerdict,

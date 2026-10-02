@@ -2,6 +2,7 @@ import { parseLevel } from '@shipgate/core';
 import {
   buildOnConfig,
   readGlobalConfig,
+  validateAccount,
   writeGlobalConfig,
   writeRepoConfig,
   removeRepoConfig,
@@ -32,7 +33,27 @@ export function runOn(opts: OnOptions = {}): number {
     return 0;
   }
 
-  const level = parseLevel(opts.level);
+  let level;
+  try {
+    level = parseLevel(opts.level);
+  } catch (e) {
+    err((e as Error).message);
+    return 1;
+  }
+
+  let account: string | undefined;
+  try {
+    account = validateAccount(opts.account);
+  } catch (e) {
+    err((e as Error).message);
+    return 1;
+  }
+  if (account) {
+    err(
+      `note: --account ${account} is recorded for status display only; it does not switch gh credentials`,
+    );
+  }
+
   const url = remoteUrl(git);
   const looksPublic = detectPublicRemote(url);
 
@@ -52,7 +73,7 @@ export function runOn(opts: OnOptions = {}): number {
     level,
     agent: opts.agent,
     publicOk: opts.publicOk,
-    account: opts.account,
+    account,
     model: opts.model,
   });
   if (opts.publicOk) cfg.publicOk = true;

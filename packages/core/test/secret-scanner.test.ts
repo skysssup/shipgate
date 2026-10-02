@@ -25,14 +25,17 @@ describe('isPlaceholderValue', () => {
   it('detects your-*-here', () => {
     expect(isPlaceholderValue('your-api-key-here')).toBe(true);
   });
-  it('detects EXAMPLE and xxxx', () => {
+  it('detects AWS docs fixture and xxx+', () => {
     expect(isPlaceholderValue('AKIAIOSFODNN7EXAMPLE')).toBe(true);
-    expect(isPlaceholderValue('xxxxxxxxxxxxxxxxxxxx')).toBe(true);
+    expect(isPlaceholderValue('xxxxxxxx')).toBe(true);
   });
   it('detects placeholder / changeme / angle brackets', () => {
     expect(isPlaceholderValue('placeholder-token')).toBe(true);
     expect(isPlaceholderValue('changeme')).toBe(true);
     expect(isPlaceholderValue('<YOUR_KEY>')).toBe(true);
+  });
+  it('does not treat EXAMPLE substring inside unrelated tokens as placeholder', () => {
+    expect(isPlaceholderValue('sk-proj-abcdefghijklmnopqrstuvwxyzEXAMPLE')).toBe(false);
   });
   it('rejects real-looking keys', () => {
     expect(isPlaceholderValue('sk-proj-abcdefghijklmnopqrstuvwxyz1234')).toBe(

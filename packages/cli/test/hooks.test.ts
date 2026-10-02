@@ -48,3 +48,23 @@ describe('setupHooks', () => {
     expect(JSON.stringify(parsed.hooks.stop)).toContain('shipgate');
   });
 });
+
+  it('refuses to overwrite unmarked Claude companion script (backs up)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'shipgate-hooks-'));
+    dirs.push(home);
+    const claudeDir = join(home, '.claude');
+    mkdirSync(claudeDir, { recursive: true });
+    const snippet = join(claudeDir, 'shipgate-stop.sh');
+    writeFileSync(snippet, '#!/bin/sh\necho custom\n');
+    const claudeSettings = join(claudeDir, 'settings.json');
+    const cursorHooks = join(home, '.cursor', 'hooks.json');
+    mkdirSync(join(home, '.cursor'), { recursive: true });
+    process.env.SHIPGATE_CLAUDE_SETTINGS = claudeSettings;
+    process.env.SHIPGATE_CURSOR_HOOKS = cursorHooks;
+
+    const result = setupHooks();
+    expect(result.claude).toBe('skipped');
+    expect(readFileSync(snippet, 'utf8')).toContain('echo custom');
+    expect(readFileSync(snippet + '.bak', 'utf8')).toContain('echo custom');
+  });
+

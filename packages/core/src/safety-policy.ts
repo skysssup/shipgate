@@ -31,6 +31,16 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
   const forceSecrets = Boolean(ctx.flags.forceSecrets);
   const publicOk = Boolean(ctx.flags.publicOk);
 
+  if (ctx.level !== 'strict' && ctx.level !== 'balanced' && ctx.level !== 'yolo') {
+    return {
+      allow: false,
+      blockReasons: [`unknown safety level: ${JSON.stringify(ctx.level)}`],
+      warnReasons: [],
+      recommendHumanGate: false,
+      recommendLlmGate: false,
+    };
+  }
+
   switch (ctx.level) {
     case 'strict': {
       if (!ctx.configPresent) {
@@ -104,6 +114,13 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
 export const DEFAULT_LEVEL: SafetyLevel = 'balanced';
 
 export function parseLevel(raw: string | undefined): SafetyLevel {
+  if (raw === undefined || raw === '') return DEFAULT_LEVEL;
   if (raw === 'strict' || raw === 'balanced' || raw === 'yolo') return raw;
-  return DEFAULT_LEVEL;
+  throw new Error(`unknown safety level: ${JSON.stringify(raw)}`);
+}
+
+/** Runtime guard for untyped callers — rejects unknown level strings. */
+export function assertSafetyLevel(raw: unknown): SafetyLevel {
+  if (raw === 'strict' || raw === 'balanced' || raw === 'yolo') return raw;
+  throw new Error(`unknown safety level: ${JSON.stringify(raw)}`);
 }

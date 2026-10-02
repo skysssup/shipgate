@@ -24,7 +24,7 @@ on options:
   --level strict|balanced|yolo
   --agent          Enable LLM review gate
   --public-ok      Acknowledge public remote
-  --account NAME   Pin gh account
+  --account NAME   Record expected gh login (status only; does not switch credentials)
   --key KEY        Store OpenRouter key in ~/.shipgate/config.json
   --model ID       Model for agent review
 
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     default:
       process.stderr.write(`shipgate: unknown command '${command}'\n`);
       process.stderr.write(HELP);
-      code = 0; // agent-safe: never exit 2 on soft paths
+      code = 1;
   }
 
   // demo --serve keeps process alive

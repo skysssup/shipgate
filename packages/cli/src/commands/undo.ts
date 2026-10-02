@@ -51,26 +51,28 @@ export function runUndo(opts: { cwd?: string } = {}): UndoResult {
   const branch = currentBranch(git);
   const remote = hasOrigin(git);
 
-  if (remote) {
-    try {
-      git.run(['push', '--force-with-lease', 'origin', `HEAD~1:${branch}`]);
-    } catch (e) {
-      err(
-        `remote force-with-lease failed (remote moved?): ${(e as Error).message}`,
-      );
-      return {
-        exitCode: 0,
-        undone: false,
-        reason: 'remote force-with-lease failed',
-      };
-    }
-  }
-
+  // Local reset FIRST so a failed remote step cannot leave remote rewound
+  // while local still points at the shipgate commit.
   try {
     git.run(['reset', '--mixed', 'HEAD~1']);
   } catch (e) {
     err(`local reset failed: ${(e as Error).message}`);
     return { exitCode: 1, undone: false, reason: 'local reset failed' };
+  }
+
+  if (remote) {
+    try {
+      git.run(['push', '--force-with-lease', 'origin', `HEAD:${branch}`]);
+    } catch (e) {
+      err(
+        `remote force-with-lease failed after local undo (push manually): ${(e as Error).message}`,
+      );
+      return {
+        exitCode: 1,
+        undone: true,
+        reason: 'local undid; remote force-with-lease failed',
+      };
+    }
   }
 
   const where = remote ? '' : ' (local only — no origin)';

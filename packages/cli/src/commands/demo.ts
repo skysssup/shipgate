@@ -64,6 +64,10 @@ export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
   }
 
   const port = opts.port ?? 4173;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    process.stderr.write(`shipgate: invalid port ${String(opts.port)}\n`);
+    return 1;
+  }
   const distRoot = normalize(dist.endsWith(sep) ? dist : dist + sep);
   const server = createServer((req, res) => {
     const urlPath = safeDecode((req.url || '/').split('?')[0] || '/');

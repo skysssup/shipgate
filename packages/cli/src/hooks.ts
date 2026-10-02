@@ -63,6 +63,13 @@ function setupClaude(notes: string[]): HookSetupResult['claude'] {
         ensureClaudeSettingsRef(settingsPath, snippetPath, notes);
         return 'merged';
       }
+      // Unmarked companion file — refuse to overwrite; keep a backup note.
+      const bak = snippetPath + '.bak';
+      writeFileSync(bak, existing, 'utf8');
+      notes.push(
+        `Claude hook conflict: ${snippetPath} exists without shipgate markers — left untouched, backup at ${bak}`,
+      );
+      return 'skipped';
     }
     writeFileSync(snippetPath, CLAUDE_SNIPPET, 'utf8');
     notes.push(`Claude hook snippet written: ${snippetPath}`);

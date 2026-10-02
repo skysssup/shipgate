@@ -36,9 +36,17 @@ function mockGit(calls: string[][], responses: Record<string, string>): GitRunne
       for (const [k, v] of Object.entries(responses)) {
         if (key.startsWith(k)) return v;
       }
-      if (args[0] === 'add' || args[0] === 'commit' || args[0] === 'push' || args[0] === 'reset') {
+      if (
+        args[0] === 'add' ||
+        args[0] === 'commit' ||
+        args[0] === 'push' ||
+        args[0] === 'reset' ||
+        args[0] === 'read-tree'
+      ) {
         return '';
       }
+      if (args[0] === 'write-tree') return 'treeoid';
+      if (args[0] === 'diff' && args[1] === '--cached') return '';
       return '';
     },
   };
@@ -116,7 +124,7 @@ describe('runShip with mocked git', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('agent review fail-open ships', async () => {
+  it('agent review fail-closed holds when gate unavailable', async () => {
     const root = tmpRepo();
     writeRepoConfig(root, {
       enabled: true,
@@ -125,7 +133,8 @@ describe('runShip with mocked git', () => {
       publicOk: true,
     });
     writeFileSync(join(root, 'a.ts'), 'export {};\n');
-    const git = mockGit([], {
+    const calls: string[][] = [];
+    const git = mockGit(calls, {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M a.ts',
@@ -135,8 +144,8 @@ describe('runShip with mocked git', () => {
       'rev-parse --short HEAD': 'deadbee',
     });
     const review = vi.fn(async () => ({
-      decision: 'ship' as const,
-      reason: 'no API key — fail-open',
+      decision: 'hold' as const,
+      reason: 'no API key — agent review fail-closed',
       failOpen: true,
     }));
     const result = await runShip({
@@ -145,8 +154,10 @@ describe('runShip with mocked git', () => {
       review,
       isPublic: false,
     });
-    expect(result.action).toBe('ship');
+    expect(result.action).toBe('hold');
+    expect(result.exitCode).toBe(1);
     expect(review).toHaveBeenCalled();
+    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
   });
 
   it('holds when another live agent marker exists (check before mark)', async () => {
@@ -251,7 +262,7 @@ describe('runShip with mocked git', () => {
       isPublic: false,
     });
     expect(result.action).toBe('hold');
-    expect(calls.some((c) => c[0] === 'reset')).toBe(true);
+    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
   });
 
 
@@ -270,24 +281,27 @@ describe('runShip with mocked git', () => {
     );
     const calls: string[][] = [];
     let staged = new Set<string>(['keep.ts']);
+    const trees: Record<string, Set<string>> = {};
     const git: GitRunner = {
       run(args) {
         calls.push(args);
         const key = args.join(' ');
         if (key === 'rev-parse --show-toplevel') return root;
         if (key === 'rev-parse --git-dir') return join(root, '.git');
+        if (key === 'write-tree') {
+          const oid = 'tree-pre';
+          trees[oid] = new Set(staged);
+          return oid;
+        }
+        if (args[0] === 'read-tree') {
+          const oid = args[1];
+          staged = new Set(trees[oid] ?? []);
+          return '';
+        }
         if (key === 'diff --cached --name-only') return [...staged].sort().join('\n');
         if (key === 'status --porcelain') return 'M  keep.ts\n?? .env';
         if (args[0] === 'add' && args[1] === '-A') {
           staged = new Set(['keep.ts', '.env']);
-          return '';
-        }
-        if (args[0] === 'add' && args[1] === '--') {
-          for (const name of args.slice(2)) staged.add(name);
-          return '';
-        }
-        if (args[0] === 'reset' && args[1] === 'HEAD') {
-          staged = new Set();
           return '';
         }
         if (key.startsWith('remote get-url')) return '';
@@ -296,9 +310,10 @@ describe('runShip with mocked git', () => {
     };
     const result = await runShip({ cwd: root, git, isPublic: false });
     expect(result.action).toBe('block');
-    // After block, previously staged keep.ts must be restored (not wiped).
+    // After block, previously staged keep.ts must be restored via read-tree.
     expect(staged.has('keep.ts')).toBe(true);
-    expect(calls.some((c) => c[0] === 'reset')).toBe(true);
+    expect(staged.has('.env')).toBe(false);
+    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
   });
 
 });

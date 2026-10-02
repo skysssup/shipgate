@@ -1,9 +1,11 @@
 import { resolve } from 'node:path';
 import {
+  assertSafetyLevel,
   buildCommitMessage,
   clearBusy,
   markBusy,
   planRun,
+  scanTextForSecrets,
   shouldDeferShip,
   sweepBusy,
   type SafetyLevel,
@@ -22,7 +24,10 @@ import {
   gitRoot,
   hasOrigin,
   remoteUrl,
+  restoreIndexTree,
+  snapshotIndexTree,
   stagedDiffNames,
+  stagedPatch,
 } from '../git.js';
 import { detectPublicRemote } from '../remote-public.js';
 import { loadFilesForScan } from '../scan-workdir.js';
@@ -48,26 +53,6 @@ export interface ShipResult {
 
 function err(msg: string): void {
   process.stderr.write(`shipgate: ${msg}\n`);
-}
-
-function unstageAll(git: ReturnType<typeof createGit>): void {
-  try {
-    git.run(['reset', 'HEAD'], { allowFail: true });
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Restore the index to a previously staged name list (best-effort). */
-function restoreStaged(git: ReturnType<typeof createGit>, previouslyStaged: string[]): void {
-  unstageAll(git);
-  for (const name of previouslyStaged) {
-    try {
-      git.run(['add', '--', name], { allowFail: true });
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
@@ -108,13 +93,15 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
   }
 
   markBusy(gdir, { label: 'ship' });
+  let indexTree: string | null = null;
   try {
-    const previouslyStaged = stagedDiffNames(git);
+    indexTree = snapshotIndexTree(git);
+
     try {
       git.run(['add', '-A']);
     } catch (e) {
       err(`git add failed: ${(e as Error).message}`);
-      restoreStaged(git, previouslyStaged);
+      restoreIndexTree(git, indexTree);
       return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
     }
 
@@ -123,6 +110,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     const targets = staged.length ? staged : files;
 
     if (!targets.length) {
+      restoreIndexTree(git, indexTree);
       err('nothing to ship');
       return {
         exitCode: 0,
@@ -131,12 +119,38 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       };
     }
 
-    const { findings } = loadFilesForScan(root, targets);
+    const { findings: fileFindings } = loadFilesForScan(root, targets);
+    const findings = [...fileFindings];
+    // Scan explicit commit message and other secret-bearing free-text inputs.
+    if (opts.message) {
+      for (const f of scanTextForSecrets(opts.message)) {
+        findings.push({ ...f, path: '<commit-message>' });
+      }
+    }
+    if (opts.prompt) {
+      for (const f of scanTextForSecrets(opts.prompt)) {
+        findings.push({ ...f, path: '<prompt>' });
+      }
+    }
+
     const url = remoteUrl(git);
     const publicOk = Boolean(cfg.publicOk || opts.publicOk);
+    // Public-remote is a fact; acknowledgement is a separate flag (publicOk).
     const isPublic = detectPublicRemote(url, opts.isPublic);
 
-    const level = cfg.level as SafetyLevel;
+    let level: SafetyLevel;
+    try {
+      level = assertSafetyLevel(cfg.level);
+    } catch (e) {
+      err((e as Error).message);
+      restoreIndexTree(git, indexTree);
+      return {
+        exitCode: 1,
+        action: 'block',
+        reasons: [(e as Error).message],
+      };
+    }
+
     const plan = planRun({
       dirtyFiles: targets,
       findings,
@@ -155,12 +169,13 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
     if (plan.action === 'block') {
       for (const r of plan.reasons) err(r);
-      restoreStaged(git, previouslyStaged);
+      restoreIndexTree(git, indexTree);
       return { exitCode: 0, action: 'block', reasons: plan.reasons };
     }
 
     if (plan.action === 'hold') {
       for (const r of plan.reasons) err(r);
+      restoreIndexTree(git, indexTree);
       return { exitCode: 0, action: 'hold', reasons: plan.reasons };
     }
 
@@ -168,15 +183,25 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     if (cfg.agentReview && !opts.message) {
       const global = readGlobalConfig();
       const reviewFn = opts.review ?? agentReview;
+      const patch = stagedPatch(git);
       const result = await reviewFn({
         apiKey: resolveApiKey(global),
         model: cfg.model || global.model,
         baseUrl: global.baseUrl,
         diffSummary: targets.join('\n'),
+        redactedDiff: patch,
         promptText: opts.prompt,
+        requireKey: true,
       });
       if (result.failOpen) {
-        err(`agent review: ${result.reason}`);
+        // Fail-closed when agent review is enabled.
+        err(`agent review unavailable: ${result.reason}`);
+        restoreIndexTree(git, indexTree);
+        return {
+          exitCode: 1,
+          action: 'hold',
+          reasons: [`agent review unavailable: ${result.reason}`],
+        };
       } else if (result.decision === 'hold') {
         err(`agent review hold: ${result.reason}`);
         reviewHold = true;
@@ -184,7 +209,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     }
 
     if (reviewHold) {
-      restoreStaged(git, previouslyStaged);
+      restoreIndexTree(git, indexTree);
       return {
         exitCode: 0,
         action: 'hold',
@@ -202,6 +227,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       git.run(['commit', '-m', fullMessage]);
     } catch (e) {
       err(`commit failed: ${(e as Error).message}`);
+      restoreIndexTree(git, indexTree);
       return { exitCode: 1, action: 'block', reasons: ['commit failed'] };
     }
 

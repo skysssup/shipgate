@@ -3,27 +3,32 @@ import type { SecretFinding } from './types.js';
 export interface ScanFile {
   path: string;
   content: string;
+  /** True when the path is absent on disk (e.g. staged deletion). */
+  missing?: boolean;
 }
 
 interface Rule {
   id: string;
   confidence: 'high' | 'medium';
-  test: (content: string, path: string) => string | null;
+  test: (content: string, path: string, file: ScanFile) => string | null;
 }
 
-const TEMPLATE_SUFFIX =
-  /\.(example|sample|template|dist)$/i;
+const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/i;
 
+/**
+ * Narrow placeholder exemptions — known fixture shapes only.
+ * Avoid broad /EXAMPLE/i or /x{4,}/ which suppress real token-shaped matches.
+ */
 const PLACEHOLDER_PATTERNS: RegExp[] = [
-  /your-[\w-]*-?here/i,
-  /EXAMPLE/i,
-  /x{4,}/i,
-  /placeholder/i,
-  /changeme/i,
-  /insert[_-]?key/i,
-  /todo[_-]?key/i,
-  /<\w[\w-]*>/,
-  /\$\{[\w.]+\}/,
+  /^your-[\w-]*-?here$/i,
+  /^changeme$/i,
+  /^placeholder([-_][\w]+)?$/i,
+  /^insert[_-]?key$/i,
+  /^todo[_-]?key$/i,
+  /^<\w[\w-]*>$/,
+  /^\$\{[\w.]+\}$/,
+  /^xxx+$/i,
+  /^AKIAIOSFODNN7EXAMPLE$/i, // AWS docs fixture only
 ];
 
 /** True when a candidate secret value looks like an intentional placeholder. */
@@ -86,9 +91,7 @@ const RULES: Rule[] = [
   {
     id: 'openai-key',
     confidence: 'high',
-    // OpenAI keys: sk-…, sk-proj-…, sk-svcacct-… — exclude Anthropic sk-ant-
-    test: (c) =>
-      firstMatch(c, /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/),
+    test: (c) => firstMatch(c, /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/),
   },
   {
     id: 'anthropic-key',
@@ -107,8 +110,7 @@ const RULES: Rule[] = [
   {
     id: 'slack-token',
     confidence: 'high',
-    test: (c) =>
-      firstMatch(c, /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/),
+    test: (c) => firstMatch(c, /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/),
   },
   {
     id: 'private-key-pem',
@@ -148,7 +150,8 @@ const RULES: Rule[] = [
   {
     id: 'dotenv-file',
     confidence: 'high',
-    test: (_c, path) => {
+    test: (_c, path, file) => {
+      if (file.missing) return null; // deletion-only — allow credential cleanup
       if (isExemptFilename(path)) return null;
       if (ENV_FILENAME.test(path)) return path;
       return null;
@@ -167,7 +170,7 @@ export function scanSecrets(files: ScanFile[]): SecretFinding[] {
     if (isExemptFilename(file.path)) continue;
 
     for (const rule of RULES) {
-      const hit = rule.test(file.content, file.path);
+      const hit = rule.test(file.content, file.path, file);
       if (!hit) continue;
       findings.push({
         path: file.path,
@@ -181,9 +184,29 @@ export function scanSecrets(files: ScanFile[]): SecretFinding[] {
   return findings;
 }
 
-/** Scan free-form text (e.g. a prompt) without a path context. */
+/** Scan free-form text (e.g. a commit message or prompt) without a path context. */
 export function scanTextForSecrets(text: string): SecretFinding[] {
-  return scanSecrets([{ path: '<prompt>', content: text }]).filter(
+  return scanSecrets([{ path: '<text>', content: text }]).filter(
     (f) => f.ruleId !== 'dotenv-file',
   );
+}
+
+/** Redact known secret shapes from a diff before external review. */
+export function redactSecretsInText(text: string): string {
+  let out = text;
+  const patterns: RegExp[] = [
+    /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/g,
+    /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/g,
+    /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b/g,
+    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+    /\bAKIA[0-9A-Z]{16}\b/g,
+    /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
+    /\bnpm_[A-Za-z0-9]{36,}\b/g,
+    /\bAIza[0-9A-Za-z\-_]{35}\b/g,
+  ];
+  for (const re of patterns) {
+    out = out.replace(re, '[REDACTED]');
+  }
+  return out;
 }

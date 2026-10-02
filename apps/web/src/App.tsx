@@ -52,8 +52,8 @@ export function App() {
         publicOk: publicOk || Boolean(scenario.input.flags.publicOk),
         confirm,
       },
-      // When user checks publicOk, treat remote as acknowledged
-      isPublicRemote: publicOk ? false : scenario.input.isPublicRemote,
+      // publicOk acknowledges a public remote; it must not rewrite the fact.
+      isPublicRemote: scenario.input.isPublicRemote,
     };
   }, [scenario, level, forceSecrets, publicOk, confirm]);
 
