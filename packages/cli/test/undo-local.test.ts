@@ -63,3 +63,27 @@ describe('undo without origin', () => {
     expect(undo.reason).toMatch(/not a shipgate commit/);
   });
 });
+
+describe('undo remote lease', () => {
+  it('does not overwrite a newer remote commit after a fetch', () => {
+    const root = realRepo();
+    const remote = mkdtempSync(join(tmpdir(), 'shipgate-remote-'));
+    dirs.push(remote);
+    execFileSync('git', ['init', '--bare', remote]);
+    const git = createGit(root);
+    git.run(['remote', 'add', 'origin', remote]);
+    git.run(['commit', '--allow-empty', '-m', 'ship\n\nShipped-by: shipgate']);
+    git.run(['push', '-u', 'origin', 'main']);
+    const shipped = git.run(['rev-parse', 'HEAD']);
+    git.run(['commit', '--allow-empty', '-m', 'another contributor']);
+    const newer = git.run(['rev-parse', 'HEAD']);
+    git.run(['push', 'origin', 'main']);
+    git.run(['reset', '--mixed', shipped]);
+    git.run(['fetch', 'origin']);
+    const result = runUndo({ cwd: root });
+    expect(result.undone).toBe(true);
+    expect(result.exitCode).toBe(1);
+    expect(git.run(['rev-parse', 'HEAD'])).not.toBe(shipped);
+    expect(git.run(['ls-remote', 'origin', 'refs/heads/main']).split(/\s/)[0]).toBe(newer);
+  });
+});

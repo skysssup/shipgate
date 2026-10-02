@@ -62,7 +62,7 @@ export function runUndo(opts: { cwd?: string } = {}): UndoResult {
 
   if (remote) {
     try {
-      git.run(['push', '--force-with-lease', 'origin', `HEAD:${branch}`]);
+      git.run(['push', `--force-with-lease=refs/heads/${branch}:${sha}`, 'origin', `HEAD:refs/heads/${branch}`]);
     } catch (e) {
       err(
         `remote force-with-lease failed after local undo (push manually): ${(e as Error).message}`,

@@ -38,7 +38,7 @@ export function isPlaceholderValue(value: string): boolean {
   return PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed));
 }
 
-/** Template / sample filenames are never treated as secret carriers. */
+/** Template filenames are exempt only from the dotenv filename rule. */
 export function isExemptFilename(path: string): boolean {
   const base = path.split(/[/\\]/).pop() ?? path;
   return TEMPLATE_SUFFIX.test(base);
@@ -161,13 +161,12 @@ const RULES: Rule[] = [
 
 /**
  * Scan file contents for high/medium confidence secrets.
- * Template filenames are fully exempt. Placeholder-looking values are skipped.
+ * Template contents are scanned. Placeholder-looking values are skipped.
  */
 export function scanSecrets(files: ScanFile[]): SecretFinding[] {
   const findings: SecretFinding[] = [];
 
   for (const file of files) {
-    if (isExemptFilename(file.path)) continue;
 
     for (const rule of RULES) {
       const hit = rule.test(file.content, file.path, file);

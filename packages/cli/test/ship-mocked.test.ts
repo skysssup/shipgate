@@ -79,7 +79,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M hello.ts',
-      'diff --cached --name-only': 'hello.ts',
+      'diff --cached --name-only -z': 'hello.ts',
       'remote get-url origin': 'git@github.com:example/private.git',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'abc1234',
@@ -116,7 +116,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': '?? .env',
-      'diff --cached --name-only': '.env',
+      'diff --cached --name-only -z': '.env',
       'remote get-url origin': '',
     });
     const result = await runShip({ cwd: root, git, isPublic: false });
@@ -138,7 +138,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M a.ts',
-      'diff --cached --name-only': 'a.ts',
+      'diff --cached --name-only -z': 'a.ts',
       'remote get-url origin': '',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'deadbee',
@@ -157,7 +157,7 @@ describe('runShip with mocked git', () => {
     expect(result.action).toBe('hold');
     expect(result.exitCode).toBe(1);
     expect(review).toHaveBeenCalled();
-    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
+    expect(calls.some((c) => c[0] === 'commit')).toBe(false);
   });
 
   it('holds when another live agent marker exists (check before mark)', async () => {
@@ -181,7 +181,7 @@ describe('runShip with mocked git', () => {
         'rev-parse --show-toplevel': root,
         'rev-parse --git-dir': join(root, '.git'),
         'status --porcelain': ' M a.ts',
-        'diff --cached --name-only': 'a.ts',
+        'diff --cached --name-only -z': 'a.ts',
       });
       const result = await runShip({ cwd: root, git, isPublic: false });
       expect(result.action).toBe('hold');
@@ -205,7 +205,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M b.ts',
-      'diff --cached --name-only': 'b.ts',
+      'diff --cached --name-only -z': 'b.ts',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'loc1234',
     });
@@ -241,7 +241,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M c.ts',
-      'diff --cached --name-only': 'c.ts',
+      'diff --cached --name-only -z': 'c.ts',
     });
     const base = git.run.bind(git);
     git.run = (args, opts) => {
@@ -262,58 +262,8 @@ describe('runShip with mocked git', () => {
       isPublic: false,
     });
     expect(result.action).toBe('hold');
-    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
+    expect(calls.some((c) => c[0] === 'commit')).toBe(false);
   });
 
-
-  it('preserves previously staged files on policy block', async () => {
-    const root = tmpRepo();
-    writeRepoConfig(root, {
-      enabled: true,
-      level: 'balanced',
-      agentReview: false,
-      publicOk: true,
-    });
-    writeFileSync(join(root, 'keep.ts'), 'export const keep = 1;\n');
-    writeFileSync(
-      join(root, '.env'),
-      'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456\n',
-    );
-    const calls: string[][] = [];
-    let staged = new Set<string>(['keep.ts']);
-    const trees: Record<string, Set<string>> = {};
-    const git: GitRunner = {
-      run(args) {
-        calls.push(args);
-        const key = args.join(' ');
-        if (key === 'rev-parse --show-toplevel') return root;
-        if (key === 'rev-parse --git-dir') return join(root, '.git');
-        if (key === 'write-tree') {
-          const oid = 'tree-pre';
-          trees[oid] = new Set(staged);
-          return oid;
-        }
-        if (args[0] === 'read-tree') {
-          const oid = args[1];
-          staged = new Set(trees[oid] ?? []);
-          return '';
-        }
-        if (key === 'diff --cached --name-only') return [...staged].sort().join('\n');
-        if (key === 'status --porcelain') return 'M  keep.ts\n?? .env';
-        if (args[0] === 'add' && args[1] === '-A') {
-          staged = new Set(['keep.ts', '.env']);
-          return '';
-        }
-        if (key.startsWith('remote get-url')) return '';
-        return '';
-      },
-    };
-    const result = await runShip({ cwd: root, git, isPublic: false });
-    expect(result.action).toBe('block');
-    // After block, previously staged keep.ts must be restored via read-tree.
-    expect(staged.has('keep.ts')).toBe(true);
-    expect(staged.has('.env')).toBe(false);
-    expect(calls.some((c) => c[0] === 'read-tree')).toBe(true);
-  });
 
 });

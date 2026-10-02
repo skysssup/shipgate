@@ -39,10 +39,8 @@ function safeDecode(path: string): string {
 
 export function runDemo(opts: { serve?: boolean; port?: number } = {}): number {
   const dist = findWebDist();
-  const pages = 'https://skysssup.github.io/shipgate/';
 
   if (!opts.serve) {
-    process.stderr.write(`shipgate demo (live): ${pages}\n`);
     if (dist) {
       process.stderr.write(`shipgate demo (local dist): ${dist}\n`);
       process.stderr.write('shipgate: run `shipgate demo --serve` to preview locally\n');

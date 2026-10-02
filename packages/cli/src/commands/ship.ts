@@ -1,3 +1,4 @@
+import { closeSync, existsSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   assertSafetyLevel,
@@ -24,8 +25,6 @@ import {
   gitRoot,
   hasOrigin,
   remoteUrl,
-  restoreIndexTree,
-  snapshotIndexTree,
   stagedDiffNames,
   stagedPatch,
 } from '../git.js';
@@ -92,16 +91,17 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     };
   }
 
+  const indexPath = resolve(root, git.run(['rev-parse', '--git-path', 'index']) || resolve(gdir, 'index'));
+  const originalIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+  let committed = false;
   markBusy(gdir, { label: 'ship' });
-  let indexTree: string | null = null;
   try {
-    indexTree = snapshotIndexTree(git);
 
     try {
       git.run(['add', '-A']);
     } catch (e) {
       err(`git add failed: ${(e as Error).message}`);
-      restoreIndexTree(git, indexTree);
+
       return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
     }
 
@@ -110,7 +110,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     const targets = staged.length ? staged : files;
 
     if (!targets.length) {
-      restoreIndexTree(git, indexTree);
+
       err('nothing to ship');
       return {
         exitCode: 0,
@@ -143,7 +143,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       level = assertSafetyLevel(cfg.level);
     } catch (e) {
       err((e as Error).message);
-      restoreIndexTree(git, indexTree);
+
       return {
         exitCode: 1,
         action: 'block',
@@ -169,13 +169,13 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
     if (plan.action === 'block') {
       for (const r of plan.reasons) err(r);
-      restoreIndexTree(git, indexTree);
+
       return { exitCode: 0, action: 'block', reasons: plan.reasons };
     }
 
     if (plan.action === 'hold') {
       for (const r of plan.reasons) err(r);
-      restoreIndexTree(git, indexTree);
+
       return { exitCode: 0, action: 'hold', reasons: plan.reasons };
     }
 
@@ -196,7 +196,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       if (result.failOpen) {
         // Fail-closed when agent review is enabled.
         err(`agent review unavailable: ${result.reason}`);
-        restoreIndexTree(git, indexTree);
+
         return {
           exitCode: 1,
           action: 'hold',
@@ -209,7 +209,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     }
 
     if (reviewHold) {
-      restoreIndexTree(git, indexTree);
+
       return {
         exitCode: 0,
         action: 'hold',
@@ -225,9 +225,10 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
     try {
       git.run(['commit', '-m', fullMessage]);
+      committed = true;
     } catch (e) {
       err(`commit failed: ${(e as Error).message}`);
-      restoreIndexTree(git, indexTree);
+
       return { exitCode: 1, action: 'block', reasons: ['commit failed'] };
     }
 
@@ -255,7 +256,26 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       sha,
     };
   } finally {
-    clearBusy(gdir);
+    try {
+      if (!committed) {
+        // Exact bytes retain partial staging, deletions and intent-to-add entries.
+        const lock = `${indexPath}.lock`;
+        const fd = openSync(lock, 'wx');
+        try {
+          try {
+            if (originalIndex !== null) writeFileSync(fd, originalIndex);
+          } finally {
+            closeSync(fd);
+          }
+          if (originalIndex === null) rmSync(indexPath, { force: true });
+          else renameSync(lock, indexPath);
+        } finally {
+          rmSync(lock, { force: true });
+        }
+      }
+    } finally {
+      clearBusy(gdir);
+    }
   }
 }
 

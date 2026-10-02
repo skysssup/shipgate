@@ -68,9 +68,9 @@ export function dirtyFiles(git: GitRunner): string[] {
 }
 
 export function stagedDiffNames(git: GitRunner): string[] {
-  const out = git.run(['diff', '--cached', '--name-only'], { allowFail: true });
+  const out = git.run(['diff', '--cached', '--name-only', '-z'], { allowFail: true });
   if (!out.trim()) return [];
-  return out.split('\n').filter(Boolean);
+  return out.split('\0').filter(Boolean);
 }
 
 export function remoteUrl(git: GitRunner): string | null {
@@ -103,21 +103,6 @@ export function parentExists(git: GitRunner): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-/** Capture the current index as a tree OID (exact staged blob set). */
-export function snapshotIndexTree(git: GitRunner): string {
-  return git.run(['write-tree']);
-}
-
-/** Restore the index to a previously snapshotted tree OID (does not touch worktree). */
-export function restoreIndexTree(git: GitRunner, treeOid: string | null): void {
-  if (!treeOid) return;
-  try {
-    git.run(['read-tree', treeOid]);
-  } catch {
-    /* best-effort */
   }
 }
 

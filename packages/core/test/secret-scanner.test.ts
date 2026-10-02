@@ -144,14 +144,15 @@ describe('scanSecrets', () => {
     expect(f.some((x) => x.ruleId === 'dotenv-file')).toBe(true);
   });
 
-  it('fully exempts .env.example including contents', () => {
+  it('scans credentials in .env.example without flagging the filename', () => {
     const f = scanSecrets([
       {
         path: '.env.example',
         content: 'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz',
       },
     ]);
-    expect(f).toHaveLength(0);
+    expect(f.some((x) => x.ruleId === 'openai-key')).toBe(true);
+    expect(f.some((x) => x.ruleId === 'dotenv-file')).toBe(false);
   });
 
   it('skips your-key-here placeholders in non-template files', () => {

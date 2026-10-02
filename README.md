@@ -4,19 +4,19 @@ Shipgate scans the working tree for common secrets, then can commit and push und
 
 When your agent finishes a turn, Shipgate can stage → scan → commit → push — under a policy you chose.
 
-**Live demo:** https://skysssup.github.io/shipgate/
+Preview the policy demo locally with `npm run dev:web`. No hosted demo is currently available.
 
 
 Blocked or held ships restore your previously staged index instead of wiping it with `git reset`.
 
 ## Install
 
-`@shipgate/cli` is not published on npm yet. From source:
+Build from source with Node.js 22.12 or later:
 
 ```bash
 git clone https://github.com/skysssup/shipgate
 cd shipgate
-npm install
+npm ci
 npm run build
 npm link -w @shipgate/cli
 ```
@@ -37,15 +37,15 @@ shipgate on             # opt-in (default level: balanced)
 | `shipgate ship` | `git add -A` → secret scan → policy → optional LLM review → commit → push (rebase-once on non-FF) |
 | `shipgate undo` | Undo last `Shipped-by: shipgate` commit (force-with-lease + mixed reset) |
 | `shipgate status` | Level, enabled, hooks, busy count (`--json` available) |
-| `shipgate demo` | Print demo URL; `--serve` previews the local web build |
+| `shipgate demo` | Print sample policy decisions; `--serve` previews the local web build |
 | `shipgate --version` | Version |
 
 ### `on` flags
 
 - `--level strict\|balanced\|yolo`
-- `--agent` — LLM review gate (OpenRouter / OpenAI-compatible; `OPENROUTER_API_KEY` or `~/.shipgate/config.json`)
+- `--agent` — fail-closed LLM review gate. Sends a pattern-redacted staged diff and prompt context to the configured external model endpoint; redaction is not a guarantee. Requires `OPENROUTER_API_KEY` or `~/.shipgate/config.json`.
 - `--public-ok` — acknowledge public remote
-- `--account <name>` — pin gh account
+- `--account <name>` — record the expected GitHub login for status; does not switch credentials
 - `--key <key>` / `--model <id>`
 
 ### `ship` flags
@@ -65,7 +65,7 @@ Exit codes stay agent-safe: soft holds/blocks exit `0`. Noise goes to stderr.
 | **balanced** | block | warn | Default; good for day-to-day agent work |
 | **yolo** | block high-confidence unless `--force-secrets` | warn | Medium findings allowed with warning. `--force-secrets` can still ship secrets — that is the point of the flag. |
 
-Template files (`*.example`, `*.sample`, `*.template`, `*.dist`) and obvious placeholders (`your-*-here`, `EXAMPLE`, `xxxx`) are exempt.
+Template filenames (`*.example`, `*.sample`, `*.template`, `*.dist`) are exempt from the dotenv filename rule; their contents are still scanned for credentials. Obvious placeholder values are skipped. Pattern scanning can miss secrets and produce false positives.
 
 Public-remote detection uses `gh repo view` when available so private GitHub remotes are not false-positives; without `gh`, `github.com` remotes are treated as public (safe default for `strict`).
 
