@@ -61,9 +61,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 export function flagString(flags: Record<string, string | boolean>, name: string): string | undefined {
   const v = flags[name];
-  return typeof v === 'string' ? v : undefined;
+  if (v === undefined) return undefined;
+  if (typeof v !== 'string') throw new Error(`--${name} requires a value`);
+  return v;
 }
 
 export function flagBool(flags: Record<string, string | boolean>, name: string): boolean {
-  return Boolean(flags[name]);
+  const value = flags[name];
+  if (value === undefined || value === false || value === 'false' || value === '0') return false;
+  if (value === true || value === 'true' || value === '1') return true;
+  throw new Error(`--${name} expects true or false`);
 }

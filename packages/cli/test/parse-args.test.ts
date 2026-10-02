@@ -25,3 +25,15 @@ describe('parseArgs', () => {
     expect(flagString(p.flags, 'level')).toBe('yolo');
   });
 });
+
+
+it('does not enable secret overrides when explicitly false', () => {
+  const { flags } = parseArgs(['node', 'shipgate', 'ship', '--force-secrets=false', '--confirm=0']);
+  expect(flagBool(flags, 'force-secrets')).toBe(false);
+  expect(flagBool(flags, 'confirm')).toBe(false);
+  expect(() => flagBool({ confirm: 'maybe' }, 'confirm')).toThrow();
+});
+it('rejects a missing safety level rather than choosing the default', () => {
+  const { flags } = parseArgs(['node', 'shipgate', 'on', '--level']);
+  expect(() => flagString(flags, 'level')).toThrow(/requires a value/);
+});

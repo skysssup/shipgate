@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach } from 'vitest';
@@ -32,6 +32,14 @@ function mockGit(calls: string[][], responses: Record<string, string>): GitRunne
       calls.push(args);
       const key = args.join(' ');
       if (key in responses) return responses[key];
+      const paths = (responses['diff --cached --name-only -z'] || '').split('\0').filter(Boolean);
+      if (key === 'ls-files --stage -z') {
+        return paths.map((path, i) => `100644 a${i.toString(16)} 0\t${path}\0`).join('');
+      }
+      if (args[0] === 'cat-file') {
+        const path = paths[parseInt(args[2].slice(1), 16)];
+        return readFileSync(join(responses['rev-parse --show-toplevel'], path), 'utf8');
+      }
       // fuzzy prefixes
       for (const [k, v] of Object.entries(responses)) {
         if (key.startsWith(k)) return v;

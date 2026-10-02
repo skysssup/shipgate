@@ -77,7 +77,7 @@ const RULES: Rule[] = [
     id: 'aws-access-key',
     confidence: 'high',
     test: (c) =>
-      firstMatch(c, /\bAKIA[0-9A-Z]{16}\b/, (v) => !/EXAMPLE/i.test(v)),
+      firstMatch(c, /\bAKIA[0-9A-Z]{16}\b/),
   },
   {
     id: 'aws-secret-key',
@@ -194,6 +194,9 @@ export function scanTextForSecrets(text: string): SecretFinding[] {
 export function redactSecretsInText(text: string): string {
   let out = text;
   const patterns: RegExp[] = [
+    /(?:aws_secret_access_key|aws_secret)\s*[=:]\s*["']?([A-Za-z0-9/+=]{40})["']?/gi,
+    /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/g,
     /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/g,
     /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/g,
     /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b/g,

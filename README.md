@@ -1,6 +1,6 @@
 # Shipgate
 
-Shipgate scans the working tree for common secrets, then can commit and push under an opt-in per-repo policy. Undo rewinds commits that carry the trailer `Shipped-by: shipgate`.
+Shipgate stages changes, scans the Git blobs that would be committed for common credentials, then can commit and push under an opt-in per-repo policy. Undo rewinds commits that carry the trailer `Shipped-by: shipgate`.
 
 When your agent finishes a turn, Shipgate can stage → scan → commit → push — under a policy you chose.
 
@@ -8,6 +8,12 @@ Preview the policy demo locally with `npm run dev:web`. No hosted demo is curren
 
 
 Blocked or held ships restore your previously staged index instead of wiping it with `git reset`.
+
+Ship and undo operations share an exclusive repository lock. An index changed by another Git operation during external review is retained; shipping holds until you review and retry. Undo refuses existing staged edits so it cannot erase partial staging. Working-tree files are not used as a substitute for staged blob contents.
+
+If a process crashes, its `.git/shipgate-ship.lock` may remain. Check the recorded PID and remove that lock only after confirming the operation has stopped. Git worktrees keep the lock in their own Git directory.
+
+Invalid policy values are rejected; they do not fall back to a weaker level. Boolean CLI flags accept `true`/`false` or `1`/`0`, and options such as `--level` require a value.
 
 ## Install
 

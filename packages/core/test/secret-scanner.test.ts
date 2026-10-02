@@ -45,6 +45,10 @@ describe('isPlaceholderValue', () => {
 });
 
 describe('scanSecrets', () => {
+  it('does not exempt arbitrary AWS-shaped keys containing EXAMPLE', () => {
+    const result = scanSecrets([{ path: 'config', content: 'AKIAABEXAMPLEDEF1234' }]);
+    expect(result.some((finding) => finding.ruleId === 'aws-access-key')).toBe(true);
+  });
   it('detects OpenAI keys', () => {
     const f = scanSecrets([
       { path: 'cfg.ts', content: 'const k = "sk-abcdefghijklmnopqrstuvwxyz";' },

@@ -10,7 +10,6 @@ import { join } from 'node:path';
 import {
   DEFAULT_LEVEL,
   parseLevel,
-  type SafetyLevel,
   type ShipgateConfig,
 } from '@shipgate/core';
 
@@ -27,12 +26,15 @@ export function readRepoConfig(repoRoot: string): ShipgateConfig | null {
   if (!existsSync(path)) return null;
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<ShipgateConfig>;
-    let level: SafetyLevel = DEFAULT_LEVEL;
-    try {
-      level = parseLevel(raw.level as string | undefined);
-    } catch {
-      level = DEFAULT_LEVEL;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    for (const key of ['enabled', 'agentReview', 'publicOk'] as const) {
+      if (raw[key] !== undefined && typeof raw[key] !== 'boolean') return null;
     }
+    for (const key of ['account', 'model'] as const) {
+      if (raw[key] !== undefined && typeof raw[key] !== 'string') return null;
+    }
+    if (raw.level !== undefined && typeof raw.level !== 'string') return null;
+    const level = parseLevel(raw.level);
     return {
       enabled: raw.enabled !== false,
       level,
@@ -74,7 +76,14 @@ export function readGlobalConfig(): GlobalConfig {
   const path = join(shipgateHome(), 'config.json');
   if (!existsSync(path)) return {};
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as GlobalConfig;
+    const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const result: GlobalConfig = {};
+    for (const key of ['openRouterApiKey', 'model', 'baseUrl'] as const) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (typeof value === 'string') result[key] = value;
+    }
+    return result;
   } catch {
     return {};
   }

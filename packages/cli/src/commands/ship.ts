@@ -20,7 +20,6 @@ import {
 import {
   createGit,
   currentBranch,
-  dirtyFiles,
   gitDir,
   gitRoot,
   hasOrigin,
@@ -29,7 +28,8 @@ import {
   stagedPatch,
 } from '../git.js';
 import { detectPublicRemote } from '../remote-public.js';
-import { loadFilesForScan } from '../scan-workdir.js';
+import { loadStagedFilesForScan } from '../scan-index.js';
+import { acquireShipLock } from '../ship-lock.js';
 
 export interface ShipOptions {
   message?: string;
@@ -79,11 +79,11 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
   }
   const gdir = resolve(root, gdirRaw);
 
-  // Check other agents BEFORE marking ourselves — avoids mutual-defer deadlock.
+  // Check other agents BEFORE marking ourselves â€” avoids mutual-defer deadlock.
   sweepBusy(gdir);
   if (shouldDeferShip(gdir)) {
     const { live } = sweepBusy(gdir);
-    err(`busy: ${live.length} agent(s) mid-turn — shipping deferred`);
+    err(`busy: ${live.length} agent(s) mid-turn â€” shipping deferred`);
     return {
       exitCode: 0,
       action: 'hold',
@@ -91,192 +91,208 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     };
   }
 
-  const indexPath = resolve(root, git.run(['rev-parse', '--git-path', 'index']) || resolve(gdir, 'index'));
-  const originalIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
-  let committed = false;
-  markBusy(gdir, { label: 'ship' });
+  const release = acquireShipLock(gdir);
+  if (!release) {
+    return { exitCode: 0, action: 'hold', reasons: ['another ship operation holds the repository lock'] };
+  }
   try {
-
+    const indexPath = resolve(root, git.run(['rev-parse', '--git-path', 'index']) || resolve(gdir, 'index'));
+    const originalIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+    let committed = false;
+    let stagedIndex: Buffer | null | undefined;
     try {
-      git.run(['add', '-A']);
-    } catch (e) {
-      err(`git add failed: ${(e as Error).message}`);
+      markBusy(gdir, { label: 'ship' });
 
-      return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
-    }
+      try {
+        git.run(['add', '-A']);
+      } catch (e) {
+        err(`git add failed: ${(e as Error).message}`);
 
-    const files = dirtyFiles(git);
-    const staged = stagedDiffNames(git);
-    const targets = staged.length ? staged : files;
-
-    if (!targets.length) {
-
-      err('nothing to ship');
-      return {
-        exitCode: 0,
-        action: 'noop',
-        reasons: ['nothing to ship — working tree clean'],
-      };
-    }
-
-    const { findings: fileFindings } = loadFilesForScan(root, targets);
-    const findings = [...fileFindings];
-    // Scan explicit commit message and other secret-bearing free-text inputs.
-    if (opts.message) {
-      for (const f of scanTextForSecrets(opts.message)) {
-        findings.push({ ...f, path: '<commit-message>' });
+        return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
       }
-    }
-    if (opts.prompt) {
-      for (const f of scanTextForSecrets(opts.prompt)) {
-        findings.push({ ...f, path: '<prompt>' });
+
+      const targets = stagedDiffNames(git);
+      stagedIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+
+      if (!targets.length) {
+        err('nothing to ship');
+        return {
+          exitCode: 0,
+          action: 'noop',
+          reasons: ['nothing to ship â€” working tree clean'],
+        };
       }
-    }
 
-    const url = remoteUrl(git);
-    const publicOk = Boolean(cfg.publicOk || opts.publicOk);
-    // Public-remote is a fact; acknowledgement is a separate flag (publicOk).
-    const isPublic = detectPublicRemote(url, opts.isPublic);
+      const { findings: fileFindings } = loadStagedFilesForScan(git, targets);
+      const findings = [...fileFindings];
+      // Scan explicit commit message and other secret-bearing free-text inputs.
+      if (opts.message) {
+        for (const f of scanTextForSecrets(opts.message)) {
+          findings.push({ ...f, path: '<commit-message>' });
+        }
+      }
+      if (opts.prompt) {
+        for (const f of scanTextForSecrets(opts.prompt)) {
+          findings.push({ ...f, path: '<prompt>' });
+        }
+      }
 
-    let level: SafetyLevel;
-    try {
-      level = assertSafetyLevel(cfg.level);
-    } catch (e) {
-      err((e as Error).message);
+      const url = remoteUrl(git);
+      const publicOk = Boolean(cfg.publicOk || opts.publicOk);
+      // Public-remote is a fact; acknowledgement is a separate flag (publicOk).
+      const isPublic = detectPublicRemote(url, opts.isPublic);
 
-      return {
-        exitCode: 1,
-        action: 'block',
-        reasons: [(e as Error).message],
-      };
-    }
-
-    const plan = planRun({
-      dirtyFiles: targets,
-      findings,
-      level,
-      flags: {
-        forceSecrets: opts.forceSecrets,
-        publicOk,
-        message: opts.message,
-        confirm: opts.confirm,
-      },
-      isPublicRemote: isPublic,
-      busyAgents: 0,
-      configPresent: true,
-      agentReviewEnabled: cfg.agentReview,
-    });
-
-    if (plan.action === 'block') {
-      for (const r of plan.reasons) err(r);
-
-      return { exitCode: 0, action: 'block', reasons: plan.reasons };
-    }
-
-    if (plan.action === 'hold') {
-      for (const r of plan.reasons) err(r);
-
-      return { exitCode: 0, action: 'hold', reasons: plan.reasons };
-    }
-
-    let reviewHold = false;
-    if (cfg.agentReview && !opts.message) {
-      const global = readGlobalConfig();
-      const reviewFn = opts.review ?? agentReview;
-      const patch = stagedPatch(git);
-      const result = await reviewFn({
-        apiKey: resolveApiKey(global),
-        model: cfg.model || global.model,
-        baseUrl: global.baseUrl,
-        diffSummary: targets.join('\n'),
-        redactedDiff: patch,
-        promptText: opts.prompt,
-        requireKey: true,
-      });
-      if (result.failOpen) {
-        // Fail-closed when agent review is enabled.
-        err(`agent review unavailable: ${result.reason}`);
+      let level: SafetyLevel;
+      try {
+        level = assertSafetyLevel(cfg.level);
+      } catch (e) {
+        err((e as Error).message);
 
         return {
           exitCode: 1,
-          action: 'hold',
-          reasons: [`agent review unavailable: ${result.reason}`],
+          action: 'block',
+          reasons: [(e as Error).message],
         };
-      } else if (result.decision === 'hold') {
-        err(`agent review hold: ${result.reason}`);
-        reviewHold = true;
       }
-    }
 
-    if (reviewHold) {
+      const plan = planRun({
+        dirtyFiles: targets,
+        findings,
+        level,
+        flags: {
+          forceSecrets: opts.forceSecrets,
+          publicOk,
+          message: opts.message,
+          confirm: opts.confirm,
+        },
+        isPublicRemote: isPublic,
+        busyAgents: 0,
+        configPresent: true,
+        agentReviewEnabled: cfg.agentReview,
+      });
 
-      return {
-        exitCode: 0,
-        action: 'hold',
-        reasons: ['agent LLM review requested hold'],
-      };
-    }
+      if (plan.action === 'block') {
+        for (const r of plan.reasons) err(r);
 
-    const { fullMessage, subject } = buildCommitMessage({
-      explicitMessage: opts.message,
-      promptText: opts.prompt,
-      changedFiles: targets,
-    });
+        return { exitCode: 0, action: 'block', reasons: plan.reasons };
+      }
 
-    try {
-      git.run(['commit', '-m', fullMessage]);
-      committed = true;
-    } catch (e) {
-      err(`commit failed: ${(e as Error).message}`);
+      if (plan.action === 'hold') {
+        for (const r of plan.reasons) err(r);
 
-      return { exitCode: 1, action: 'block', reasons: ['commit failed'] };
-    }
+        return { exitCode: 0, action: 'hold', reasons: plan.reasons };
+      }
 
-    const branch = currentBranch(git);
-    const pushed = pushWithRebaseOnce(git, branch);
-    if (!pushed.ok) {
-      err(pushed.message);
-      return {
-        exitCode: 0,
-        action: 'hold',
-        reasons: [pushed.message],
-      };
-    }
+      let reviewHold = false;
+      if (cfg.agentReview && !opts.message) {
+        const global = readGlobalConfig();
+        const reviewFn = opts.review ?? agentReview;
+        const patch = stagedPatch(git);
+        const result = await reviewFn({
+          apiKey: resolveApiKey(global),
+          model: cfg.model || global.model,
+          baseUrl: global.baseUrl,
+          diffSummary: targets.join('\n'),
+          redactedDiff: patch,
+          promptText: opts.prompt,
+          requireKey: true,
+        });
+        if (result.failOpen) {
+          // Fail-closed when agent review is enabled.
+          err(`agent review unavailable: ${result.reason}`);
 
-    const sha = git.run(['rev-parse', '--short', 'HEAD'], { allowFail: true });
-    err(`shipped ${sha} — ${subject}${pushed.localOnly ? ' (local only)' : ''}`);
-    return {
-      exitCode: 0,
-      action: 'ship',
-      reasons: [
-        pushed.localOnly
-          ? `committed ${sha} locally (no origin)`
-          : `shipped ${sha}`,
-      ],
-      sha,
-    };
-  } finally {
-    try {
-      if (!committed) {
-        // Exact bytes retain partial staging, deletions and intent-to-add entries.
-        const lock = `${indexPath}.lock`;
-        const fd = openSync(lock, 'wx');
-        try {
-          try {
-            if (originalIndex !== null) writeFileSync(fd, originalIndex);
-          } finally {
-            closeSync(fd);
-          }
-          if (originalIndex === null) rmSync(indexPath, { force: true });
-          else renameSync(lock, indexPath);
-        } finally {
-          rmSync(lock, { force: true });
+          return {
+            exitCode: 1,
+            action: 'hold',
+            reasons: [`agent review unavailable: ${result.reason}`],
+          };
+        } else if (result.decision === 'hold') {
+          err(`agent review hold: ${result.reason}`);
+          reviewHold = true;
         }
       }
+
+      if (reviewHold) {
+        return {
+          exitCode: 0,
+          action: 'hold',
+          reasons: ['agent LLM review requested hold'],
+        };
+      }
+
+      const currentIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+      if (!sameIndex(stagedIndex, currentIndex)) {
+        err('index changed during review â€” staged changes retained; run ship again');
+        return { exitCode: 1, action: 'hold', reasons: ['index changed during review'] };
+      }
+      const { fullMessage, subject } = buildCommitMessage({
+        explicitMessage: opts.message,
+        promptText: opts.prompt,
+        changedFiles: targets,
+      });
+
+      try {
+        git.run(['commit', '-m', fullMessage]);
+        committed = true;
+      } catch (e) {
+        err(`commit failed: ${(e as Error).message}`);
+
+        return { exitCode: 1, action: 'block', reasons: ['commit failed'] };
+      }
+
+      const branch = currentBranch(git);
+      const pushed = pushWithRebaseOnce(git, branch);
+      if (!pushed.ok) {
+        err(pushed.message);
+        return {
+          exitCode: 0,
+          action: 'hold',
+          reasons: [pushed.message],
+        };
+      }
+
+      const sha = git.run(['rev-parse', '--short', 'HEAD'], { allowFail: true });
+      err(`shipped ${sha} â€” ${subject}${pushed.localOnly ? ' (local only)' : ''}`);
+      return {
+        exitCode: 0,
+        action: 'ship',
+        reasons: [
+          pushed.localOnly
+            ? `committed ${sha} locally (no origin)`
+            : `shipped ${sha}`,
+        ],
+        sha,
+      };
     } finally {
-      clearBusy(gdir);
+      try {
+        const currentIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+        if (!committed && stagedIndex !== undefined && sameIndex(stagedIndex, currentIndex)) {
+          // Exact bytes retain partial staging, deletions and intent-to-add entries.
+          const lock = `${indexPath}.lock`;
+          const fd = openSync(lock, 'wx');
+          try {
+            try {
+              if (originalIndex !== null) writeFileSync(fd, originalIndex);
+            } finally {
+              closeSync(fd);
+            }
+            if (originalIndex === null) rmSync(indexPath, { force: true });
+            else renameSync(lock, indexPath);
+          } finally {
+            rmSync(lock, { force: true });
+          }
+        }
+      } finally {
+        clearBusy(gdir);
+      }
     }
+  } finally {
+    release();
   }
+}
+
+function sameIndex(a: Buffer | null | undefined, b: Buffer | null): boolean {
+  return a === null ? b === null : a !== undefined && b !== null && a.equals(b);
 }
 
 function pushWithRebaseOnce(
@@ -307,7 +323,7 @@ function pushWithRebaseOnce(
       }
       return {
         ok: false,
-        message: `push/rebase failed — commit kept locally: ${(e2 as Error).message}`,
+        message: `push/rebase failed â€” commit kept locally: ${(e2 as Error).message}`,
       };
     }
   }

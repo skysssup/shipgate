@@ -41,12 +41,12 @@ function randomNonce(): string {
 
 /** True if a process with the given pid appears alive. */
 export function isPidAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false;
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
@@ -162,7 +162,18 @@ export function sweepBusy(
     let marker: BusyMarker | null = null;
     try {
       marker = JSON.parse(readFileSync(full, 'utf8')) as BusyMarker;
+      if (!marker || typeof marker !== 'object' || !Number.isInteger(marker.pid)) {
+        throw new Error('Invalid busy marker');
+      }
     } catch {
+      // A writer may still be filling its newly created marker. Do not erase it.
+      const filenamePid = Number(/^agent-(\d+)\.json$/.exec(name)?.[1]);
+      if (isPidAlive(filenamePid)) {
+        if (opts.includeSelf || filenamePid !== selfPid) {
+          live.push({ pid: filenamePid, startedAt: 0, nonce: 'unreadable' });
+        }
+        continue;
+      }
       try {
         unlinkSync(full);
         swept += 1;

@@ -47,8 +47,8 @@ export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
   const base = (input.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
   const model = input.model || DEFAULT_MODEL;
   const diff = redactSecretsInText(
-    (input.redactedDiff || input.diffSummary || '').slice(0, 12000),
-  );
+    input.redactedDiff || input.diffSummary || '',
+  ).slice(0, 12000);
   const body = {
     model,
     temperature: 0,
@@ -63,9 +63,9 @@ export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
         content: JSON.stringify({
           disclosure:
             'This payload is sent to an external model endpoint. Secrets are pattern-redacted but redaction is not guaranteed.',
-          prompt: input.promptText?.slice(0, 2000) ?? null,
-          recentSubjects: input.commitSubjects?.slice(0, 5) ?? [],
-          changedFiles: input.diffSummary.slice(0, 2000),
+          prompt: input.promptText ? redactSecretsInText(input.promptText).slice(0, 2000) : null,
+          recentSubjects: input.commitSubjects?.slice(0, 5).map((subject) => redactSecretsInText(subject).slice(0, 500)) ?? [],
+          changedFiles: redactSecretsInText(input.diffSummary).slice(0, 2000),
           redactedDiff: diff,
         }),
       },
@@ -122,8 +122,8 @@ function parseDecision(
   if (!match) return null;
   try {
     const obj = JSON.parse(match[0]) as { decision?: string; reason?: string };
-    if (obj.decision === 'ship' || obj.decision === 'hold') {
-      return { decision: obj.decision, reason: obj.reason || obj.decision };
+    if (obj && (obj.decision === 'ship' || obj.decision === 'hold')) {
+      return { decision: obj.decision, reason: typeof obj.reason === 'string' ? obj.reason : obj.decision };
     }
   } catch {
     return null;

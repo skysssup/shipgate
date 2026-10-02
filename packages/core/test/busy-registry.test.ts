@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -39,6 +39,18 @@ describe('isPidAlive', () => {
 });
 
 describe('BusyRegistry', () => {
+  it('retains an unreadable live marker and safely sweeps malformed dead markers', () => {
+    const gitDir = tmpGitDir();
+    const dir = join(gitDir, 'shipgate-busy');
+    mkdirSync(dir);
+    const livePath = join(dir, `agent-${process.pid}.json`);
+    writeFileSync(livePath, 'null');
+    writeFileSync(join(dir, 'agent-999999999.json'), 'null');
+    const snapshot = sweepBusy(gitDir, { includeSelf: true });
+    expect(snapshot.live.some((marker) => marker.pid === process.pid)).toBe(true);
+    expect(snapshot.swept).toBe(1);
+    expect(existsSync(livePath)).toBe(true);
+  });
   it('marks and clears busy', () => {
     const gitDir = tmpGitDir();
     markBusy(gitDir, { pid: process.pid, label: 'test' });

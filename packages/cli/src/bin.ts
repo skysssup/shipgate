@@ -8,7 +8,7 @@ import { runUndo } from './commands/undo.js';
 import { flagBool, flagString, parseArgs } from './parse-args.js';
 import { VERSION } from './version.js';
 
-const HELP = `shipgate — safe auto-ship for coding agents
+const HELP = `shipgate — policy-controlled Git commits and pushes
 
 Usage:
   shipgate setup              Wire Claude/Cursor stop hooks (idempotent)
@@ -17,7 +17,7 @@ Usage:
   shipgate ship [options]     Stage → scan → commit → push
   shipgate undo               Undo last shipgate commit (local + remote)
   shipgate status [--json]    Show level, hooks, busy
-  shipgate demo [--serve]     Print demo URL / serve local web build
+  shipgate demo [--serve]     Show policy decisions / serve local web build
   shipgate --version          Print version
 
 on options:
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   }
 
   // demo --serve keeps process alive
-  if (command === 'demo' && flagBool(flags, 'serve')) return;
+  if (command === 'demo' && flagBool(flags, 'serve') && code === 0) return;
   process.exit(code);
 }
 
