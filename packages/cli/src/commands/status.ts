@@ -9,6 +9,7 @@ export interface StatusReport {
   version: string;
   enabled: boolean;
   level: string | null;
+  account: string | null;
   agentReview: boolean;
   publicOk: boolean;
   hooks: { claude: boolean; cursor: boolean; paths: { claude: string; cursor: string } };
@@ -24,6 +25,7 @@ export function gatherStatus(cwd: string = process.cwd()): StatusReport {
     version: VERSION,
     enabled: false,
     level: null,
+    account: null,
     agentReview: false,
     publicOk: false,
     hooks,
@@ -37,6 +39,7 @@ export function gatherStatus(cwd: string = process.cwd()): StatusReport {
   if (cfg) {
     report.enabled = cfg.enabled;
     report.level = cfg.level;
+    report.account = cfg.account ?? null;
     report.agentReview = cfg.agentReview;
     report.publicOk = cfg.publicOk;
   }
@@ -60,6 +63,7 @@ export function printStatus(report: StatusReport, json: boolean): void {
     `shipgate ${report.version}`,
     `repo: ${report.inGitRepo ? (report.enabled ? 'enabled' : 'disabled') : 'not a git repo'}`,
     `level: ${report.level ?? '—'}`,
+    `account: ${report.account ?? '—'}`,
     `agent-review: ${report.agentReview ? 'on' : 'off'}`,
     `public-ok: ${report.publicOk ? 'yes' : 'no'}`,
     `hooks: claude=${report.hooks.claude ? 'yes' : 'no'} cursor=${report.hooks.cursor ? 'yes' : 'no'}`,

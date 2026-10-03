@@ -4,6 +4,7 @@ import {
   isPlaceholderValue,
   scanSecrets,
   scanTextForSecrets,
+  redactSecretsInText,
 } from '../src/secret-scanner.js';
 
 describe('isExemptFilename', () => {
@@ -113,6 +114,22 @@ describe('scanSecrets', () => {
     const fake = ['sk', 'live', 'abcdefghijklmnopqrstuvwxyz12'].join('_');
     const f = scanSecrets([{ path: 'pay.ts', content: `key=${fake}` }]);
     expect(f.some((x) => x.ruleId === 'stripe-key')).toBe(true);
+  });
+
+  it.each(['live', 'test'])('allows Stripe publishable keys in %s mode', (mode) => {
+    const key = ['pk', mode, 'a'.repeat(24)].join('_');
+    expect(scanSecrets([{ path: 'frontend.ts', content: key }])).toEqual([]);
+    expect(redactSecretsInText(key)).toBe(key);
+  });
+
+  it.each(['sk', 'rk'])('detects and redacts Stripe %s keys in both modes', (prefix) => {
+    for (const mode of ['live', 'test']) {
+      const key = [prefix, mode, 'a'.repeat(24)].join('_');
+      expect(scanSecrets([{ path: 'server.ts', content: key }])).toEqual([
+        expect.objectContaining({ ruleId: 'stripe-key', confidence: 'high' }),
+      ]);
+      expect(redactSecretsInText(key)).toBe('[REDACTED]');
+    }
   });
 
   it('detects Google API keys', () => {

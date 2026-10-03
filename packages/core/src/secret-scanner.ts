@@ -126,7 +126,7 @@ const RULES: Rule[] = [
   {
     id: 'stripe-key',
     confidence: 'high',
-    test: (c) => firstMatch(c, /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/),
+    test: (c) => firstMatch(c, /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/),
   },
   {
     id: 'google-api-key',
@@ -203,7 +203,7 @@ export function redactSecretsInText(text: string): string {
     /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
     /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
     /\bAKIA[0-9A-Z]{16}\b/g,
-    /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
+    /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
     /\bnpm_[A-Za-z0-9]{36,}\b/g,
     /\bAIza[0-9A-Za-z\-_]{35}\b/g,
   ];
