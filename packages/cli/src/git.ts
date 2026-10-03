@@ -86,6 +86,13 @@ export function hasOrigin(git: GitRunner): boolean {
   return Boolean(remoteUrl(git));
 }
 
+export function remotePushUrls(git: GitRunner): string[] {
+  if (!hasOrigin(git)) return [];
+  const urls = git.run(['remote', 'get-url', '--push', '--all', 'origin']).split('\n').filter(Boolean);
+  if (!urls.length) throw new Error('Cannot determine origin push URLs');
+  return urls;
+}
+
 export function currentBranch(git: GitRunner): string {
   return git.run(['rev-parse', '--abbrev-ref', 'HEAD'], { allowFail: true }) || 'HEAD';
 }

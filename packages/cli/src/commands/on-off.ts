@@ -7,7 +7,7 @@ import {
   writeRepoConfig,
   removeRepoConfig,
 } from '../config.js';
-import { createGit, gitRoot, remoteUrl } from '../git.js';
+import { createGit, gitRoot, remotePushUrls } from '../git.js';
 import { detectPublicRemote } from '../remote-public.js';
 
 function err(msg: string): void {
@@ -54,8 +54,7 @@ export function runOn(opts: OnOptions = {}): number {
     );
   }
 
-  const url = remoteUrl(git);
-  const looksPublic = detectPublicRemote(url);
+  const looksPublic = remotePushUrls(git).some((url) => detectPublicRemote(url));
 
   if (looksPublic && !opts.publicOk) {
     err(

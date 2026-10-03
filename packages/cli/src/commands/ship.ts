@@ -23,7 +23,7 @@ import {
   gitDir,
   gitRoot,
   hasOrigin,
-  remoteUrl,
+  remotePushUrls,
   stagedDiffNames,
   stagedPatch,
 } from '../git.js';
@@ -143,10 +143,8 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         }
       }
 
-      const url = remoteUrl(git);
       const publicOk = Boolean(cfg.publicOk || opts.publicOk);
-      // Public-remote is a fact; acknowledgement is a separate flag (publicOk).
-      const isPublic = detectPublicRemote(url, opts.isPublic);
+      const isPublic = opts.isPublic ?? remotePushUrls(git).some((url) => detectPublicRemote(url));
 
       let level: SafetyLevel;
       try {
@@ -177,15 +175,12 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         agentReviewEnabled: cfg.agentReview,
       });
 
+      for (const reason of plan.reasons) err(reason);
       if (plan.action === 'block') {
-        for (const r of plan.reasons) err(r);
-
         return { exitCode: 0, action: 'block', reasons: plan.reasons };
       }
 
       if (plan.action === 'hold') {
-        for (const r of plan.reasons) err(r);
-
         return { exitCode: 0, action: 'hold', reasons: plan.reasons };
       }
 
@@ -263,6 +258,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         exitCode: 0,
         action: 'ship',
         reasons: [
+          ...plan.reasons,
           pushed.localOnly
             ? `committed ${sha} locally (no origin)`
             : `shipped ${sha}`,
