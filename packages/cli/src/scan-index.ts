@@ -7,7 +7,7 @@ export function loadStagedFilesForScan(
   paths: string[],
 ): { files: ScanFile[]; findings: SecretFinding[] } {
   const entries = new Map<string, { mode: string; oid: string }>();
-  for (const entry of git.run(['ls-files', '--stage', '-z']).split('\0')) {
+  for (const entry of git.run(['ls-files', '--stage', '--full-name', '-z', '--', ':/']).split('\0')) {
     if (!entry) continue;
     const match = /^(\d+) ([a-f0-9]+) (\d)\t([\s\S]+)$/.exec(entry);
     if (!match || match[3] !== '0') throw new Error('Cannot scan an unmerged index');

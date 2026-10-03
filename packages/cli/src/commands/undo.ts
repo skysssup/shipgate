@@ -34,7 +34,7 @@ export function runUndo(opts: { cwd?: string } = {}): UndoResult {
 
   const rawGitDir = gitDir(git);
   if (!rawGitDir) return { exitCode: 1, undone: false, reason: 'cannot resolve Git directory' };
-  const release = acquireShipLock(resolve(root, rawGitDir));
+  const release = acquireShipLock(resolve(cwd, rawGitDir));
   if (!release) return { exitCode: 1, undone: false, reason: 'another ship operation holds the repository lock' };
   try {
     const msg = headMessage(git);

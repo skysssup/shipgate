@@ -43,7 +43,7 @@ export function gatherStatus(cwd: string = process.cwd()): StatusReport {
 
   const gdirRaw = gitDir(git);
   if (gdirRaw) {
-    const gdir = resolve(root, gdirRaw);
+    const gdir = resolve(cwd, gdirRaw);
     const { live } = sweepBusy(gdir, { includeSelf: true });
     report.busyCount = live.length;
   }
