@@ -32,13 +32,14 @@ function mockGit(calls: string[][], responses: Record<string, string>): GitRunne
       calls.push(args);
       const key = args.join(' ');
       if (key in responses) return responses[key];
-      const paths = (responses['diff --cached --name-only -z'] || '').split('\0').filter(Boolean);
+      const paths = (responses['diff --cached --name-only --no-relative -z -- :/'] || '').split('\0').filter(Boolean);
       if (key === 'ls-files --stage --full-name -z -- :/') {
         return paths.map((path, i) => `100644 a${i.toString(16)} 0\t${path}\0`).join('');
       }
       if (args[0] === 'cat-file') {
         const path = paths[parseInt(args[2].slice(1), 16)];
-        return readFileSync(join(responses['rev-parse --show-toplevel'], path), 'utf8');
+        const content = readFileSync(join(responses['rev-parse --show-toplevel'], path), 'utf8');
+        return args[1] === '-s' ? String(Buffer.byteLength(content)) : content;
       }
       // fuzzy prefixes
       for (const [k, v] of Object.entries(responses)) {
@@ -87,7 +88,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M hello.ts',
-      'diff --cached --name-only -z': 'hello.ts',
+      'diff --cached --name-only --no-relative -z -- :/': 'hello.ts',
       'remote get-url origin': 'git@github.com:example/private.git',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'abc1234',
@@ -124,7 +125,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': '?? .env',
-      'diff --cached --name-only -z': '.env',
+      'diff --cached --name-only --no-relative -z -- :/': '.env',
       'remote get-url origin': '',
     });
     const result = await runShip({ cwd: root, git, isPublic: false });
@@ -146,7 +147,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M a.ts',
-      'diff --cached --name-only -z': 'a.ts',
+      'diff --cached --name-only --no-relative -z -- :/': 'a.ts',
       'remote get-url origin': '',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'deadbee',
@@ -189,7 +190,7 @@ describe('runShip with mocked git', () => {
         'rev-parse --show-toplevel': root,
         'rev-parse --git-dir': join(root, '.git'),
         'status --porcelain': ' M a.ts',
-        'diff --cached --name-only -z': 'a.ts',
+        'diff --cached --name-only --no-relative -z -- :/': 'a.ts',
       });
       const result = await runShip({ cwd: root, git, isPublic: false });
       expect(result.action).toBe('hold');
@@ -213,7 +214,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M b.ts',
-      'diff --cached --name-only -z': 'b.ts',
+      'diff --cached --name-only --no-relative -z -- :/': 'b.ts',
       'rev-parse --abbrev-ref HEAD': 'main',
       'rev-parse --short HEAD': 'loc1234',
     });
@@ -249,7 +250,7 @@ describe('runShip with mocked git', () => {
       'rev-parse --show-toplevel': root,
       'rev-parse --git-dir': join(root, '.git'),
       'status --porcelain': ' M c.ts',
-      'diff --cached --name-only -z': 'c.ts',
+      'diff --cached --name-only --no-relative -z -- :/': 'c.ts',
     });
     const base = git.run.bind(git);
     git.run = (args, opts) => {

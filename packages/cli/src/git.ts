@@ -1,7 +1,7 @@
 import { execFileSync, type ExecFileSyncOptions } from 'node:child_process';
 
 export interface GitRunner {
-  run(args: string[], opts?: { allowFail?: boolean }): string;
+  run(args: string[], opts?: { allowFail?: boolean; maxBuffer?: number }): string;
 }
 
 export function createGit(cwd: string = process.cwd()): GitRunner {
@@ -11,6 +11,7 @@ export function createGit(cwd: string = process.cwd()): GitRunner {
         cwd,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: opts.maxBuffer,
       };
       try {
         return String(execFileSync('git', args, execOpts)).trimEnd();
@@ -68,7 +69,7 @@ export function dirtyFiles(git: GitRunner): string[] {
 }
 
 export function stagedDiffNames(git: GitRunner): string[] {
-  const out = git.run(['diff', '--cached', '--name-only', '-z'], { allowFail: true });
+  const out = git.run(['diff', '--cached', '--name-only', '--no-relative', '-z', '--', ':/']);
   if (!out.trim()) return [];
   return out.split('\0').filter(Boolean);
 }
@@ -108,5 +109,5 @@ export function parentExists(git: GitRunner): boolean {
 
 /** Staged unified diff for optional external review (may be empty). */
 export function stagedPatch(git: GitRunner): string {
-  return git.run(['diff', '--cached', '--no-color'], { allowFail: true });
+  return git.run(['diff', '--cached', '--no-color', '--no-relative', '--', ':/']);
 }

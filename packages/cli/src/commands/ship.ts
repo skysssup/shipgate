@@ -110,8 +110,8 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         return { exitCode: 1, action: 'block', reasons: ['git add failed'] };
       }
 
-      const targets = stagedDiffNames(git);
       stagedIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
+      const targets = stagedDiffNames(git);
 
       if (!targets.length) {
         err('nothing to ship');
@@ -122,7 +122,14 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         };
       }
 
-      const { findings: fileFindings } = loadStagedFilesForScan(git, targets);
+      let fileFindings;
+      try {
+        fileFindings = loadStagedFilesForScan(git, targets).findings;
+      } catch (error) {
+        const reason = `staged scan failed: ${(error as Error).message}`;
+        err(reason);
+        return { exitCode: 1, action: 'hold', reasons: [reason] };
+      }
       const findings = [...fileFindings];
       // Scan explicit commit message and other secret-bearing free-text inputs.
       if (opts.message) {
