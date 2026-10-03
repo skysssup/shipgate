@@ -154,6 +154,80 @@ describe('ship transactions', () => {
     expect(rootGit.run(['show', ':file.txt'])).toBe('staged');
     expect(readFileSync(join(root, 'file.txt'), 'utf8')).toBe('unstaged');
   });
+
+  it.each([
+    { linked: false, nestedSecret: false },
+    { linked: false, nestedSecret: true },
+    { linked: true, nestedSecret: false },
+    { linked: true, nestedSecret: true },
+  ])('scans relative diffs across the repository (%j)', async ({ linked, nestedSecret }) => {
+    const { dir, git } = repository();
+    git.run(['config', 'diff.relative', 'true']);
+    let root = dir;
+    if (linked) {
+      root = mkdtempSync(join(tmpdir(), 'shipgate-relative-'));
+      dirs.push(root);
+      git.run(['worktree', 'add', '-b', 'relative', root]);
+    }
+    const rootGit = createGit(root);
+    const cwd = join(root, 'src');
+    mkdirSync(cwd);
+    writeFileSync(join(root, 'file.txt'), 'root change');
+    writeFileSync(join(cwd, 'clean.txt'), 'nested change');
+    writeFileSync(join(nestedSecret ? cwd : root, 'credential.txt'), ['sk', 'a'.repeat(30)].join('-'));
+    const indexPath = resolve(root, rootGit.run(['rev-parse', '--git-path', 'index']));
+    const index = readFileSync(indexPath);
+    const head = rootGit.run(['rev-parse', 'HEAD']);
+
+    const result = await runShip({ cwd, message: 'test', isPublic: false });
+
+    expect(result.action).toBe('block');
+    expect(result.reasons.join(' ')).toMatch(/secret/);
+    expect(rootGit.run(['rev-parse', 'HEAD'])).toBe(head);
+    expect(readFileSync(indexPath).equals(index)).toBe(true);
+  });
+
+  it('reviews changes outside the current directory when diff.relative is enabled', async () => {
+    const { dir, git } = repository(true);
+    git.run(['config', 'diff.relative', 'true']);
+    const cwd = join(dir, 'src');
+    mkdirSync(cwd);
+    writeFileSync(join(dir, 'file.txt'), 'root change');
+    writeFileSync(join(cwd, 'nested.txt'), 'nested change');
+    let patch = '';
+    const result = await runShip({ cwd, isPublic: false, review: async (input) => {
+      patch = input.redactedDiff ?? '';
+      return { decision: 'hold', reason: 'test hold', failOpen: false };
+    } });
+    expect(result.action).toBe('hold');
+    expect(patch).toContain('+root change');
+    expect(patch).toContain('+nested change');
+  });
+
+  it.each([false, true])('scans all of a blob larger than 1 MiB (secret=%s)', async (secret) => {
+    const { dir, git } = repository();
+    const content = 'a'.repeat(2 * 1024 * 1024) + (secret ? '\n' + ['sk', 'b'.repeat(30)].join('-') : '');
+    writeFileSync(join(dir, 'large.txt'), content);
+    const head = git.run(['rev-parse', 'HEAD']);
+    const result = await runShip({ cwd: dir, message: 'large file', isPublic: false });
+    expect(result.action).toBe(secret ? 'block' : 'ship');
+    if (secret) expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
+    else expect(git.run(['cat-file', '-s', 'HEAD:large.txt'])).toBe(String(Buffer.byteLength(content)));
+  });
+
+  it('holds without changing the index when a staged blob exceeds 16 MiB', async () => {
+    const { dir, git } = repository();
+    writeFileSync(join(dir, 'large.txt'), Buffer.alloc(16 * 1024 * 1024 + 1, 'a'));
+    const head = git.run(['rev-parse', 'HEAD']);
+    const index = readFileSync(join(dir, '.git', 'index'));
+    const result = await runShip({ cwd: dir, message: 'large file', isPublic: false });
+    expect(result.action).toBe('hold');
+    expect(result.exitCode).toBe(1);
+    expect(result.reasons.join(' ')).toMatch(/at most 16 MiB/);
+    expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
+    expect(readFileSync(join(dir, '.git', 'index')).equals(index)).toBe(true);
+    expect(existsSync(join(dir, '.git', 'shipgate-ship.lock'))).toBe(false);
+  });
 });
 
 describe('policy validation', () => {
