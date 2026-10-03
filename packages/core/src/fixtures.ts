@@ -17,7 +17,7 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
   {
     id: 'secret-env',
     label: 'Secret in .env',
-    description: 'Real OpenAI key staged in .env — should block at every level.',
+    description: 'Credential-shaped fixture in .env — blocked unless explicitly overridden.',
     input: {
       dirtyFiles: ['.env'],
       findings: [

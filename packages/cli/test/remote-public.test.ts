@@ -18,6 +18,18 @@ describe('parseGithubRemote', () => {
   it('rejects non-github', () => {
     expect(parseGithubRemote('git@gitlab.com:acme/app.git')).toBeNull();
   });
+
+  it('recognizes explicit SSH URLs and GitHub SSH over port 443', () => {
+    for (const url of [
+      'ssh://git@github.com/acme/app.git',
+      'ssh://git@ssh.github.com:443/acme/app.git',
+      'git://github.com/acme/app.git',
+    ]) {
+      expect(parseGithubRemote(url)).toEqual({ owner: 'acme', repo: 'app' });
+      expect(detectPublicRemote(url, undefined, () => null)).toBe(true);
+    }
+    expect(parseGithubRemote('ssh://git@github.com.example.org/acme/app.git')).toBeNull();
+  });
 });
 
 describe('detectPublicRemote', () => {

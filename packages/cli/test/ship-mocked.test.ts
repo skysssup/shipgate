@@ -33,7 +33,7 @@ function mockGit(calls: string[][], responses: Record<string, string>): GitRunne
       const key = args.join(' ');
       if (key in responses) return responses[key];
       const paths = (responses['diff --cached --name-only -z'] || '').split('\0').filter(Boolean);
-      if (key === 'ls-files --stage -z') {
+      if (key === 'ls-files --stage --full-name -z -- :/') {
         return paths.map((path, i) => `100644 a${i.toString(16)} 0\t${path}\0`).join('');
       }
       if (args[0] === 'cat-file') {

@@ -78,9 +78,6 @@ export function App() {
           >
             GitHub
           </a>
-          <a className="btn" href="https://www.npmjs.com/package/@shipgate/cli">
-            npm
-          </a>
         </div>
       </header>
 
@@ -226,13 +223,7 @@ export function App() {
       </section>
 
       <footer className="footer">
-        <span>MIT · Node ≥ 18 · TypeScript monorepo</span>
-        <span>
-          Live demo ·{' '}
-          <a href="https://skysssup.github.io/shipgate/">
-            skysssup.github.io/shipgate
-          </a>
-        </span>
+        <span>MIT · Build from source with Node ≥ 22.12</span>
       </footer>
     </div>
   );
