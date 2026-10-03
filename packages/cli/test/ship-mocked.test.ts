@@ -6,6 +6,7 @@ import { afterEach } from 'vitest';
 import { runShip } from '../src/commands/ship.js';
 import type { GitRunner } from '../src/git.js';
 import { writeRepoConfig } from '../src/config.js';
+import * as remotePublic from '../src/remote-public.js';
 
 const dirs: string[] = [];
 
@@ -17,6 +18,7 @@ function tmpRepo(): string {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   while (dirs.length) {
     try {
       rmSync(dirs.pop()!, { recursive: true, force: true });
@@ -274,5 +276,48 @@ describe('runShip with mocked git', () => {
     expect(calls.some((c) => c[0] === 'commit')).toBe(false);
   });
 
+  it.each([false, true])('checks every origin push destination, not its fetch URL (publicOk=%s)', async (publicOk) => {
+    const root = tmpRepo();
+    writeRepoConfig(root, { enabled: true, level: 'strict', agentReview: false, publicOk });
+    writeFileSync(join(root, 'clean.txt'), 'clean');
+    const detect = vi.spyOn(remotePublic, 'detectPublicRemote').mockImplementation((url) => url?.startsWith('https://github.com/') ?? false);
+    const calls: string[][] = [];
+    const git = mockGit(calls, {
+      'rev-parse --show-toplevel': root,
+      'rev-parse --git-dir': join(root, '.git'),
+      'diff --cached --name-only --no-relative -z -- :/': 'clean.txt',
+      'remote get-url origin': '/local/fetch.git',
+      'remote get-url --push --all origin': '/local/push.git\nhttps://github.com/skysssup/shipgate.git',
+      'rev-parse --abbrev-ref HEAD': 'main',
+      'rev-parse --short HEAD': 'abc1234',
+    });
+    const result = await runShip({ cwd: root, git, message: 'test destinations' });
+    expect(result.action).toBe(publicOk ? 'ship' : 'block');
+    expect(detect.mock.calls.map(([url]) => url)).toEqual(['/local/push.git', 'https://github.com/skysssup/shipgate.git']);
+    expect(calls.some((args) => args[0] === 'commit')).toBe(publicOk);
+    expect(calls.some((args) => args[0] === 'push')).toBe(publicOk);
+  });
+
+  it.each([
+    { level: 'balanced' as const, forceSecrets: true, isPublic: false, content: ['sk', 'a'.repeat(30)].join('-'), warning: 'secrets overridden' },
+    { level: 'balanced' as const, forceSecrets: false, isPublic: true, content: 'clean', warning: 'public remote' },
+    { level: 'yolo' as const, forceSecrets: false, isPublic: false, content: 'AIza' + 'A'.repeat(35), warning: 'medium-confidence finding(s) allowed' },
+  ])('logs and returns successful policy warnings: $warning', async ({ level, forceSecrets, isPublic, content, warning }) => {
+    const root = tmpRepo();
+    writeRepoConfig(root, { enabled: true, level, agentReview: false, publicOk: false });
+    writeFileSync(join(root, 'file.txt'), content);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const git = mockGit([], {
+      'rev-parse --show-toplevel': root,
+      'rev-parse --git-dir': join(root, '.git'),
+      'diff --cached --name-only --no-relative -z -- :/': 'file.txt',
+      'rev-parse --abbrev-ref HEAD': 'main',
+      'rev-parse --short HEAD': 'abc1234',
+    });
+    const result = await runShip({ cwd: root, git, message: 'test policy', forceSecrets, isPublic });
+    expect(result.action).toBe('ship');
+    expect(result.reasons.join('\n')).toContain(warning);
+    expect(stderr.mock.calls.map(([text]) => text).join('')).toContain(warning);
+  });
 
 });
