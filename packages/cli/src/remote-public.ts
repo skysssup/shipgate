@@ -7,13 +7,16 @@ export interface GithubRepoRef {
 
 /** Parse owner/repo from a github.com remote URL. */
 export function parseGithubRemote(url: string): GithubRepoRef | null {
-  const ssh = url.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/i);
-  if (ssh) return { owner: ssh[1], repo: ssh[2] };
-  const https = url.match(
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/(.+?)(?:\.git)?\/?$/i,
-  );
-  if (https) return { owner: https[1], repo: https[2] };
-  return null;
+  const normalized = url.replace(/^git@(github\.com|ssh\.github\.com):/i, 'ssh://git@$1/');
+  try {
+    const parsed = new URL(normalized.includes('://') ? normalized : `https://${normalized}`);
+    if (!['https:', 'http:', 'ssh:', 'git:'].includes(parsed.protocol)) return null;
+    if (!['github.com', 'www.github.com', 'ssh.github.com'].includes(parsed.hostname.toLowerCase())) return null;
+    const path = parsed.pathname.match(/^\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+    return path ? { owner: path[1], repo: path[2] } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

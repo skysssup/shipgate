@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { runShip } from '../src/commands/ship.js';
 import { runUndo } from '../src/commands/undo.js';
 import { createGit } from '../src/git.js';
@@ -91,6 +91,68 @@ describe('ship transactions', () => {
     expect(result.undone).toBe(false);
     expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
     expect(git.run(['show', ':file.txt'])).toBe('staged');
+  });
+
+  it.each([false, true])('scans the whole repository from a nested directory (linked worktree=%s)', async (linked) => {
+    const { dir, git } = repository();
+    let root = dir;
+    if (linked) {
+      root = mkdtempSync(join(tmpdir(), 'shipgate-linked-'));
+      dirs.push(root);
+      git.run(['worktree', 'add', '-b', 'linked', root]);
+    }
+    const rootGit = createGit(root);
+    const cwd = join(root, 'packages', 'cli');
+    mkdirSync(cwd, { recursive: true });
+    writeFileSync(join(root, 'file.txt'), 'staged');
+    rootGit.run(['add', 'file.txt']);
+    writeFileSync(join(root, 'file.txt'), 'unstaged');
+    writeFileSync(join(root, '.env'), 'SETTING=fixture');
+    writeFileSync(join(cwd, 'clean.txt'), 'nested change');
+    const indexPath = resolve(root, rootGit.run(['rev-parse', '--git-path', 'index']));
+    const index = readFileSync(indexPath);
+    const head = rootGit.run(['rev-parse', 'HEAD']);
+
+    const result = await runShip({ cwd, isPublic: false });
+
+    expect(result.action).toBe('block');
+    expect(result.reasons.join(' ')).toMatch(/secret/);
+    expect(rootGit.run(['rev-parse', 'HEAD'])).toBe(head);
+    expect(readFileSync(indexPath).equals(index)).toBe(true);
+    expect(rootGit.run(['show', ':file.txt'])).toBe('staged');
+    expect(readFileSync(join(root, 'file.txt'), 'utf8')).toBe('unstaged');
+  });
+
+  it.each([false, true])('restores partial staging after nested review holds (linked worktree=%s)', async (linked) => {
+    const { dir, git } = repository(true);
+    let root = dir;
+    if (linked) {
+      root = mkdtempSync(join(tmpdir(), 'shipgate-linked-review-'));
+      dirs.push(root);
+      git.run(['worktree', 'add', '-b', 'linked-review', root]);
+    }
+    const rootGit = createGit(root);
+    const cwd = join(root, 'packages', 'cli');
+    mkdirSync(cwd, { recursive: true });
+    writeFileSync(join(root, 'file.txt'), 'staged');
+    rootGit.run(['add', 'file.txt']);
+    writeFileSync(join(root, 'file.txt'), 'unstaged');
+    writeFileSync(join(cwd, 'clean.txt'), 'nested change');
+    const indexPath = resolve(root, rootGit.run(['rev-parse', '--git-path', 'index']));
+    const index = readFileSync(indexPath);
+    const head = rootGit.run(['rev-parse', 'HEAD']);
+
+    const result = await runShip({
+      cwd,
+      isPublic: false,
+      review: async () => ({ decision: 'hold', reason: 'needs review', failOpen: false }),
+    });
+
+    expect(result.action).toBe('hold');
+    expect(rootGit.run(['rev-parse', 'HEAD'])).toBe(head);
+    expect(readFileSync(indexPath).equals(index)).toBe(true);
+    expect(rootGit.run(['show', ':file.txt'])).toBe('staged');
+    expect(readFileSync(join(root, 'file.txt'), 'utf8')).toBe('unstaged');
   });
 });
 

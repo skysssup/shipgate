@@ -77,13 +77,12 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
   if (!gdirRaw) {
     return { exitCode: 0, action: 'noop', reasons: ['no git dir'] };
   }
-  const gdir = resolve(root, gdirRaw);
+  const gdir = resolve(cwd, gdirRaw);
 
-  // Check other agents BEFORE marking ourselves â€” avoids mutual-defer deadlock.
   sweepBusy(gdir);
   if (shouldDeferShip(gdir)) {
     const { live } = sweepBusy(gdir);
-    err(`busy: ${live.length} agent(s) mid-turn â€” shipping deferred`);
+    err(`busy: ${live.length} agent(s) mid-turn — shipping deferred`);
     return {
       exitCode: 0,
       action: 'hold',
@@ -96,7 +95,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
     return { exitCode: 0, action: 'hold', reasons: ['another ship operation holds the repository lock'] };
   }
   try {
-    const indexPath = resolve(root, git.run(['rev-parse', '--git-path', 'index']) || resolve(gdir, 'index'));
+    const indexPath = resolve(cwd, git.run(['rev-parse', '--git-path', 'index']) || resolve(gdir, 'index'));
     const originalIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
     let committed = false;
     let stagedIndex: Buffer | null | undefined;
@@ -119,7 +118,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
         return {
           exitCode: 0,
           action: 'noop',
-          reasons: ['nothing to ship â€” working tree clean'],
+          reasons: ['nothing to ship — working tree clean'],
         };
       }
 
@@ -222,7 +221,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
 
       const currentIndex = existsSync(indexPath) ? readFileSync(indexPath) : null;
       if (!sameIndex(stagedIndex, currentIndex)) {
-        err('index changed during review â€” staged changes retained; run ship again');
+        err('index changed during review — staged changes retained; run ship again');
         return { exitCode: 1, action: 'hold', reasons: ['index changed during review'] };
       }
       const { fullMessage, subject } = buildCommitMessage({
@@ -252,7 +251,7 @@ export async function runShip(opts: ShipOptions = {}): Promise<ShipResult> {
       }
 
       const sha = git.run(['rev-parse', '--short', 'HEAD'], { allowFail: true });
-      err(`shipped ${sha} â€” ${subject}${pushed.localOnly ? ' (local only)' : ''}`);
+      err(`shipped ${sha} — ${subject}${pushed.localOnly ? ' (local only)' : ''}`);
       return {
         exitCode: 0,
         action: 'ship',
@@ -323,7 +322,7 @@ function pushWithRebaseOnce(
       }
       return {
         ok: false,
-        message: `push/rebase failed â€” commit kept locally: ${(e2 as Error).message}`,
+        message: `push/rebase failed — commit kept locally: ${(e2 as Error).message}`,
       };
     }
   }
