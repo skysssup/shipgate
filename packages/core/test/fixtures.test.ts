@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_SCENARIOS, findScenario, scenarioInput } from '../src/fixtures.js';
+import { DEMO_SCENARIOS, findScenario, RULE_SAMPLES, scenarioInput } from '../src/fixtures.js';
+import { scanSecrets, SECRET_RULE_IDS } from '../src/secret-scanner.js';
 import { planRun } from '../src/run-plan.js';
 import type { SafetyLevel } from '../src/types.js';
 
@@ -57,5 +58,15 @@ describe('demo scenarios', () => {
     const contents = DEMO_SCENARIOS.flatMap((s) => s.files.map((f) => f.content)).join('\n');
     expect(contents).toMatch(/shipgateDemo/);
     expect(Buffer.from('eyJzdWIiOiJzaGlwZ2F0ZS1kZW1vIn0', 'base64').toString()).toBe('{"sub":"shipgate-demo"}');
+  });
+});
+
+describe('rule samples', () => {
+  it('cover every scanner rule', () => {
+    expect(Object.keys(RULE_SAMPLES).sort()).toEqual([...SECRET_RULE_IDS].sort());
+  });
+
+  it.each(Object.entries(RULE_SAMPLES))('%s triggers only its own rule', (ruleId, file) => {
+    expect(scanSecrets([file]).map((f) => f.ruleId)).toEqual([ruleId]);
   });
 });

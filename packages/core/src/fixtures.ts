@@ -112,6 +112,63 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
   },
 ];
 
+const join = (parts: string[], separator = '') => parts.join(separator);
+
+/**
+ * One synthetic file per scanner rule that triggers that rule and no other.
+ * Values are assembled at runtime and are not real credentials.
+ */
+export const RULE_SAMPLES: Record<string, ScanFile> = {
+  'aws-access-key': {
+    path: 'deploy/aws.ini',
+    content: `[deploy]\naws_access_key_id = ${join(['AKIA', 'Z7Q4MNB2XK9PL3RT'])}\nregion = eu-west-1\n`,
+  },
+  'aws-secret-key': {
+    path: 'deploy/credentials',
+    content: `[deploy]\naws_secret_access_key = ${join(['Zq4uW1nB8sL0', 'xR7tY2pK9mV3cH6fJ5dG', 'a1Q8eT'], '/')}\n`,
+  },
+  'openai-key': {
+    path: 'src/ai.ts',
+    content: `export const client = new OpenAI({ apiKey: '${join(['sk', 'proj', 'Q9w8E7r6T5y4U3i2O1p0AsDfGhJkL'], '-')}' });\n`,
+  },
+  'anthropic-key': {
+    path: 'scripts/summarize.py',
+    content: `client = anthropic.Anthropic(api_key="${join(['sk', 'ant', 'api03', 'Zx9Cv8Bn7Mm6Lk5Jh4Gf3Dd2'], '-')}")\n`,
+  },
+  'github-token': {
+    path: 'scripts/release.sh',
+    content: `#!/bin/sh\nexport GH_TOKEN=${join(['ghp', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'], '_')}\ngh release create "$1"\n`,
+  },
+  'slack-token': {
+    path: 'ops/notify.ts',
+    content: `const slackToken = '${join(['xoxb', '2048', 'q9w8e7r6t5'], '-')}';\n`,
+  },
+  'private-key-pem': {
+    path: 'deploy/id_ed25519',
+    content: `${join(['-----BEGIN', 'OPENSSH', 'PRIVATE', 'KEY-----'], ' ')}\n${'b3BlbnNzaC1rZXktdjEAAAAA'.repeat(3)}\n${join(['-----END', 'OPENSSH', 'PRIVATE', 'KEY-----'], ' ')}\n`,
+  },
+  'stripe-key': {
+    path: 'server/billing.ts',
+    content: `export const stripe = new Stripe('${join(['rk', 'live', 'Q1w2E3r4T5y6U7i8O9p0'], '_')}');\n`,
+  },
+  'google-api-key': {
+    path: 'web/maps.js',
+    content: `const MAPS_KEY = '${join(['AIza', 'Sy9Q8w7E6r5T4y3U2i1O0pAsDfGhJkLzXcV'])}';\n`,
+  },
+  'npm-token': {
+    path: '.npmrc',
+    content: `//registry.npmjs.org/:_authToken=${join(['npm', 'Q1w2E3r4T5y6U7i8O9p0A1s2D3f4G5h6J7k8'], '_')}\n`,
+  },
+  jwt: {
+    path: 'test/fixtures/auth.json',
+    content: `{\n  "session": "${SYNTHETIC_JWT}"\n}\n`,
+  },
+  'dotenv-file': {
+    path: '.env.local',
+    content: 'PORT=3000\nLOG_LEVEL=debug\n',
+  },
+};
+
 export function findScenario(id: string): DemoScenario | undefined {
   return DEMO_SCENARIOS.find((s) => s.id === id);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planRun } from '../src/run-plan.js';
+import { GATE_ORDER, planRun } from '../src/run-plan.js';
 import type { RemoteVisibility, RunPlanInput, SafetyLevel, SecretFinding, ShipFlags } from '../src/types.js';
 
 const high: SecretFinding = { path: '.env', ruleId: 'openai-key', excerpt: 'sk-proj-…CDEF', confidence: 'high', line: 1 };
@@ -105,6 +105,45 @@ describe('planRun expected-behavior matrix', () => {
   });
 });
 
+const statuses = (over: Partial<RunPlanInput>) => planRun(input(over)).gates.map((g) => `${g.gate}:${g.status}`).join(' ');
+
+describe('gate results', () => {
+  it.each<[string, Partial<RunPlanInput>, string]>([
+    ['not enabled', { configPresent: false }, 'opt-in:block busy:not-reached changes:not-reached credentials:not-reached destination:not-reached review:not-reached'],
+    ['busy', { busyAgents: 1 }, 'opt-in:pass busy:hold changes:not-reached credentials:not-reached destination:not-reached review:not-reached'],
+    ['clean tree', { dirtyFiles: [] }, 'opt-in:pass busy:pass changes:noop credentials:not-reached destination:not-reached review:not-reached'],
+    ['credentials and destination both block', { level: 'strict', remote: 'public', findings: [high], review: { enabled: true } }, 'opt-in:pass busy:pass changes:pass credentials:block destination:block review:not-reached'],
+    ['warnings ship', { level: 'yolo', remote: 'public', findings: [medium], review: { enabled: true, outcome: 'approve' } }, 'opt-in:pass busy:pass changes:pass credentials:warn destination:warn review:pass'],
+    ['forced findings', { findings: [high], flags: { forceSecrets: true } }, 'opt-in:pass busy:pass changes:pass credentials:warn destination:pass review:skip'],
+    ['no origin', { remote: 'none' }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:skip review:skip'],
+    ['other host on balanced', { remote: 'other-host' }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:pass review:skip'],
+    ['other host on strict', { level: 'strict', remote: 'other-host' }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:warn review:skip'],
+    ['review pending', { review: { enabled: true } }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:pass review:pending'],
+    ['review hold', { review: { enabled: true, outcome: 'hold' } }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:pass review:hold'],
+    ['review unavailable', { review: { enabled: true, outcome: 'unavailable' } }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:pass review:hold'],
+    ['review skipped by -m', { flags: { message: 'fix' }, review: { enabled: true, outcome: 'hold' } }, 'opt-in:pass busy:pass changes:pass credentials:pass destination:pass review:warn'],
+  ])('%s', (_name, over, expected) => {
+    expect(statuses(over)).toBe(expected);
+  });
+
+  it('explains each check in plain language', () => {
+    const result = planRun(input({ level: 'strict', remote: 'public', findings: [high], dirtyFiles: ['a', 'b'] }));
+    expect(result.gates.map((g) => g.detail)).toEqual([
+      '.shipgate.json enables Shipgate at the strict level.',
+      'No other agent is marked busy.',
+      '2 changed files to stage.',
+      '1 high-confidence credential finding: strict blocks every finding.',
+      'origin is a public GitHub repository; strict requires --public-ok (or publicOk in .shipgate.json).',
+      'Not reached: an earlier check stopped the run.',
+    ]);
+  });
+
+  it('reports an unknown level at the opt-in check', () => {
+    const result = planRun(input({ level: 'loose' as SafetyLevel }));
+    expect(result.gates[0]).toEqual({ gate: 'opt-in', status: 'block', detail: result.reasons[0] });
+  });
+});
+
 describe('policy invariants across every combination', () => {
   const levels: SafetyLevel[] = ['strict', 'balanced', 'yolo'];
   const remotes: RemoteVisibility[] = ['none', 'private', 'public', 'unknown', 'other-host'];
@@ -129,5 +168,13 @@ describe('policy invariants across every combination', () => {
 
     expect(planRun({ ...base, busyAgents: 1 }).code).toBe('busy');
     expect(planRun({ ...base, configPresent: false }).code).toBe('not-enabled');
+
+    expect(result.gates.map((g) => g.gate)).toEqual(GATE_ORDER);
+    const warns = result.gates.some((g) => g.status === 'warn');
+    if (warns) expect(result.warnings.length).toBeGreaterThan(0);
+    if (result.action === 'ship') expect(warns).toBe(result.warnings.length > 0);
+    const stops = result.gates.filter((g) => ['block', 'hold', 'noop', 'not-reached'].includes(g.status));
+    if (result.action === 'ship') expect(stops).toEqual([]);
+    else expect(result.gates.filter((g) => g.status === 'block').map((g) => g.detail)).toEqual(result.reasons);
   });
 });

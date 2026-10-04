@@ -83,6 +83,24 @@ export type DecisionCode =
   | 'review-unavailable'
   | 'clear';
 
+/** The checks planRun applies, in order. */
+export type GateId = 'opt-in' | 'busy' | 'changes' | 'credentials' | 'destination' | 'review';
+
+/**
+ * - `pass` / `warn`: the check allowed the run (with a warning).
+ * - `block` / `hold` / `noop`: the check stopped the run with that action.
+ * - `skip`: the check does not apply (no origin, review off).
+ * - `pending`: external review runs after this decision.
+ * - `not-reached`: an earlier check stopped the run.
+ */
+export type GateStatus = 'pass' | 'warn' | 'block' | 'hold' | 'noop' | 'skip' | 'pending' | 'not-reached';
+
+export interface GateResult {
+  gate: GateId;
+  status: GateStatus;
+  detail: string;
+}
+
 /** Where external review stands for this decision. */
 export type ReviewStatus =
   | 'off'
@@ -106,4 +124,6 @@ export interface RunPlanResult {
   /** Suggestions the policy makes but does not enforce. */
   recommendations: string[];
   review: ReviewStatus;
+  /** Every check in order, with what it decided. */
+  gates: GateResult[];
 }

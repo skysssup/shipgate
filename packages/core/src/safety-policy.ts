@@ -1,4 +1,4 @@
-import { SAFETY_LEVELS, type RemoteVisibility, type SafetyLevel, type SecretFinding, type ShipFlags } from './types.js';
+import { SAFETY_LEVELS, type GateResult, type RemoteVisibility, type SafetyLevel, type SecretFinding, type ShipFlags } from './types.js';
 
 export interface PolicyContext {
   level: SafetyLevel;
@@ -15,6 +15,8 @@ export interface PolicyVerdict {
   blockReasons: string[];
   warnings: string[];
   recommendations: string[];
+  /** Results of the credential and destination checks, in that order. */
+  gates: [GateResult, GateResult];
 }
 
 export const DEFAULT_LEVEL: SafetyLevel = 'balanced';
@@ -53,33 +55,46 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
   const high = ctx.findings.filter((f) => f.confidence === 'high');
   const medium = ctx.findings.filter((f) => f.confidence === 'medium');
   const blocked = ctx.level === 'yolo' ? high : ctx.findings;
+  let credentials: GateResult = { gate: 'credentials', status: 'pass', detail: 'No credential findings.' };
   if (blocked.length) {
     const scope = ctx.level === 'yolo' ? 'yolo blocks high-confidence findings' : `${ctx.level} blocks every finding`;
     if (ctx.flags.forceSecrets) {
-      warnings.push(`${describeFindings(blocked)} overridden with --force-secrets.`);
+      credentials = { gate: 'credentials', status: 'warn', detail: `${describeFindings(blocked)} overridden with --force-secrets.` };
+      warnings.push(credentials.detail);
     } else {
-      blockReasons.push(`${describeFindings(blocked)}: ${scope}.`);
+      credentials = { gate: 'credentials', status: 'block', detail: `${describeFindings(blocked)}: ${scope}.` };
+      blockReasons.push(credentials.detail);
       code = 'credentials';
     }
   }
   if (ctx.level === 'yolo' && medium.length) {
-    warnings.push(`${describeFindings(medium)} allowed by yolo.`);
+    const allowed = `${describeFindings(medium)} allowed by yolo.`;
+    warnings.push(allowed);
+    if (credentials.status === 'pass') credentials = { gate: 'credentials', status: 'warn', detail: allowed };
   }
 
+  let destination: GateResult = { gate: 'destination', status: 'pass', detail: 'origin is a private GitHub repository.' };
   const publicLike = ctx.remote === 'public' || ctx.remote === 'unknown';
-  if (publicLike && !ctx.flags.publicOk) {
+  if (ctx.remote === 'none') {
+    destination = { gate: 'destination', status: 'skip', detail: 'No origin remote, so nothing is pushed.' };
+  } else if (publicLike && ctx.flags.publicOk) {
+    destination = { gate: 'destination', status: 'pass', detail: 'Public destination acknowledged with --public-ok.' };
+  } else if (publicLike) {
     const fact = ctx.remote === 'public'
       ? 'origin is a public GitHub repository'
       : 'origin is on GitHub but its visibility could not be checked, so it is treated as public';
     if (ctx.level === 'strict') {
-      blockReasons.push(`${fact}; strict requires --public-ok (or publicOk in .shipgate.json).`);
+      destination = { gate: 'destination', status: 'block', detail: `${fact}; strict requires --public-ok (or publicOk in .shipgate.json).` };
+      blockReasons.push(destination.detail);
       if (code === 'clear') code = 'public-destination';
     } else {
-      warnings.push(`${fact}; pass --public-ok to acknowledge.`);
+      destination = { gate: 'destination', status: 'warn', detail: `${fact}; pass --public-ok to acknowledge.` };
+      warnings.push(destination.detail);
     }
-  }
-  if (ctx.level === 'strict' && ctx.remote === 'other-host') {
-    warnings.push('origin is not a GitHub URL, so Shipgate could not check whether it is public.');
+  } else if (ctx.remote === 'other-host') {
+    const text = 'origin is not a GitHub URL, so Shipgate could not check whether it is public.';
+    destination = { gate: 'destination', status: ctx.level === 'strict' ? 'warn' : 'pass', detail: text };
+    if (ctx.level === 'strict') warnings.push(text);
   }
 
   if (ctx.level === 'strict') {
@@ -91,5 +106,5 @@ export function evaluatePolicy(ctx: PolicyContext): PolicyVerdict {
     }
   }
 
-  return { allow: blockReasons.length === 0, code, blockReasons, warnings, recommendations };
+  return { allow: blockReasons.length === 0, code, blockReasons, warnings, recommendations, gates: [credentials, destination] };
 }

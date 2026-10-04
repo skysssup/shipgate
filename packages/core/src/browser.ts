@@ -12,6 +12,9 @@ export type {
   PlanAction,
   DecisionCode,
   ReviewStatus,
+  GateId,
+  GateStatus,
+  GateResult,
 } from './types.js';
 export { SAFETY_LEVELS } from './types.js';
 
@@ -22,7 +25,11 @@ export {
   isPlaceholderValue,
   isExemptFilename,
   SECRET_RULE_IDS,
+  SECRET_RULES,
+  locateSecrets,
   type ScanFile,
+  type SecretRule,
+  type SecretMatch,
 } from './secret-scanner.js';
 
 export {
@@ -43,12 +50,28 @@ export {
   type MessageSource,
 } from './commit-subject.js';
 
-export { planRun } from './run-plan.js';
+export { planRun, GATE_ORDER } from './run-plan.js';
+
+export {
+  SHIP_OUTCOMES,
+  formatShipResult,
+  detailLine,
+  findingLine,
+  describeRemote,
+  nextStep,
+  shippedSummary,
+  simulateShip,
+  type ShipOutcome,
+  type ShipResult,
+  type StagingState,
+  type ShipPlace,
+} from './ship-report.js';
 
 export {
   DEMO_SCENARIOS,
   findScenario,
   scenarioInput,
+  RULE_SAMPLES,
   type DemoScenario,
   type ScenarioFacts,
 } from './fixtures.js';

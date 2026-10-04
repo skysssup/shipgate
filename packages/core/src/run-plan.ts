@@ -1,5 +1,13 @@
 import { evaluatePolicy, isSafetyLevel } from './safety-policy.js';
-import type { RunPlanInput, RunPlanResult } from './types.js';
+import type { GateId, GateResult, RunPlanInput, RunPlanResult } from './types.js';
+
+/** The checks planRun applies, in order. */
+export const GATE_ORDER: readonly GateId[] = ['opt-in', 'busy', 'changes', 'credentials', 'destination', 'review'];
+
+function completeGates(gates: GateResult[]): GateResult[] {
+  return GATE_ORDER.map((gate) => gates.find((g) => g.gate === gate)
+    ?? { gate, status: 'not-reached', detail: 'Not reached: an earlier check stopped the run.' });
+}
 
 /**
  * Decide whether `shipgate ship` may commit and push. Pure: the CLI and the web
@@ -9,11 +17,13 @@ import type { RunPlanInput, RunPlanResult } from './types.js';
  */
 export function planRun(input: RunPlanInput): RunPlanResult {
   const reviewEnabled = Boolean(input.review?.enabled);
+  const gates: GateResult[] = [];
   const stopped = (
     action: RunPlanResult['action'],
     code: RunPlanResult['code'],
     summary: string,
     reasons: string[],
+    gate: GateResult,
   ): RunPlanResult => ({
     action,
     code,
@@ -22,27 +32,44 @@ export function planRun(input: RunPlanInput): RunPlanResult {
     warnings: [],
     recommendations: [],
     review: reviewEnabled ? 'not-reached' : 'off',
+    gates: completeGates([...gates, gate]),
   });
 
   if (!input.configPresent) {
     return stopped('block', 'not-enabled', 'Shipgate is not enabled in this repository.', [
       'There is no enabled .shipgate.json; run `shipgate on` to opt in.',
-    ]);
+    ], { gate: 'opt-in', status: 'block', detail: 'There is no enabled .shipgate.json.' });
   }
   if (!isSafetyLevel(input.level)) {
-    return stopped('block', 'invalid-level', 'The policy level is not valid.', [
-      `Unknown policy level ${JSON.stringify(input.level)}; use strict, balanced, or yolo.`,
-    ]);
+    const reason = `Unknown policy level ${JSON.stringify(input.level)}; use strict, balanced, or yolo.`;
+    return stopped('block', 'invalid-level', 'The policy level is not valid.', [reason], {
+      gate: 'opt-in',
+      status: 'block',
+      detail: reason,
+    });
   }
+  gates.push({ gate: 'opt-in', status: 'pass', detail: `.shipgate.json enables Shipgate at the ${input.level} level.` });
+
   if (input.busyAgents > 0) {
     const agents = input.busyAgents === 1 ? '1 other agent holds' : `${input.busyAgents} other agents hold`;
-    return stopped('hold', 'busy', 'Another agent is still working here, so Shipgate waits.', [
-      `${agents} a busy marker in this worktree.`,
-    ]);
+    const reason = `${agents} a busy marker in this worktree.`;
+    return stopped('hold', 'busy', 'Another agent is still working here, so Shipgate waits.', [reason], {
+      gate: 'busy',
+      status: 'hold',
+      detail: reason,
+    });
   }
+  gates.push({ gate: 'busy', status: 'pass', detail: 'No other agent is marked busy.' });
+
   if (!input.dirtyFiles.length) {
-    return stopped('noop', 'nothing-to-ship', 'There are no changes to commit.', []);
+    return stopped('noop', 'nothing-to-ship', 'There are no changes to commit.', [], {
+      gate: 'changes',
+      status: 'noop',
+      detail: 'There are no changes to commit.',
+    });
   }
+  const count = input.dirtyFiles.length;
+  gates.push({ gate: 'changes', status: 'pass', detail: `${count} changed ${count === 1 ? 'file' : 'files'} to stage.` });
 
   const verdict = evaluatePolicy({
     level: input.level,
@@ -51,6 +78,7 @@ export function planRun(input: RunPlanInput): RunPlanResult {
     flags: input.flags,
     reviewEnabled,
   });
+  gates.push(...verdict.gates);
   if (!verdict.allow) {
     const destination = verdict.code === 'public-destination';
     return {
@@ -63,6 +91,7 @@ export function planRun(input: RunPlanInput): RunPlanResult {
       warnings: verdict.warnings,
       recommendations: [],
       review: reviewEnabled ? 'not-reached' : 'off',
+      gates: completeGates(gates),
     };
   }
 
@@ -72,29 +101,40 @@ export function planRun(input: RunPlanInput): RunPlanResult {
     if (input.flags.message?.trim()) {
       review = 'skipped';
       warnings.push('External review was skipped because the commit message was given with -m/--message.');
+      gates.push({ gate: 'review', status: 'warn', detail: 'Skipped because the commit message was given with -m/--message.' });
     } else if (input.review.outcome === 'hold') {
+      const reason = `Reviewer: ${input.review.detail?.trim() || 'no reason given'}`;
       return {
         action: 'hold',
         code: 'review-hold',
         summary: 'External review asked to hold this change.',
-        reasons: [`Reviewer: ${input.review.detail?.trim() || 'no reason given'}`],
+        reasons: [reason],
         warnings,
         recommendations: [],
         review: 'held',
+        gates: completeGates([...gates, { gate: 'review', status: 'hold', detail: reason }]),
       };
     } else if (input.review.outcome === 'unavailable') {
+      const reason = `Review unavailable: ${input.review.detail?.trim() || 'unknown error'}`;
       return {
         action: 'hold',
         code: 'review-unavailable',
         summary: 'External review could not run, and Shipgate does not ship without it.',
-        reasons: [`Review unavailable: ${input.review.detail?.trim() || 'unknown error'}`],
+        reasons: [reason],
         warnings,
         recommendations: [],
         review: 'unavailable',
+        gates: completeGates([...gates, { gate: 'review', status: 'hold', detail: reason }]),
       };
+    } else if (input.review.outcome === 'approve') {
+      review = 'approved';
+      gates.push({ gate: 'review', status: 'pass', detail: 'The reviewer approved the change.' });
     } else {
-      review = input.review.outcome === 'approve' ? 'approved' : 'pending';
+      review = 'pending';
+      gates.push({ gate: 'review', status: 'pending', detail: 'The configured reviewer runs before the commit.' });
     }
+  } else {
+    gates.push({ gate: 'review', status: 'skip', detail: 'External review is off.' });
   }
 
   const summary = review === 'pending'
@@ -108,5 +148,6 @@ export function planRun(input: RunPlanInput): RunPlanResult {
     warnings,
     recommendations: verdict.recommendations,
     review,
+    gates,
   };
 }

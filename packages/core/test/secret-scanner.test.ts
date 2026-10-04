@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   isExemptFilename,
   isPlaceholderValue,
+  locateSecrets,
   scanSecrets,
   scanTextForSecrets,
   redactSecretsInText,
   SECRET_RULE_IDS,
+  SECRET_RULES,
 } from '../src/secret-scanner.js';
 
 describe('isExemptFilename', () => {
@@ -359,5 +362,52 @@ describe('scanTextForSecrets labels', () => {
     const findings = scanTextForSecrets(`deploy with ${SAMPLES['npm-token'].value}`, '--message');
     expect(findings).toEqual([expect.objectContaining({ path: '--message', ruleId: 'npm-token', line: 1 })]);
     expect(scanTextForSecrets('.env', '--prompt')).toEqual([]);
+  });
+});
+
+describe('rule descriptions', () => {
+  it('match the README table', () => {
+    const readme = readFileSync(new URL('../../../README.md', import.meta.url), 'utf8');
+    const rows = [...readme.matchAll(/^\| `([a-z0-9-]+)` \| (high|medium) \| (.+) \|$/gm)].map(([, id, confidence, matches]) => ({ id, confidence, matches }));
+    expect(rows).toEqual(SECRET_RULES);
+  });
+});
+
+describe('locateSecrets', () => {
+  it('returns the position of every value, including repeats the scan does not report', () => {
+    const key = SAMPLES['github-token'].value;
+    const content = `a=${key}\nb=${key}\n`;
+    const matches = locateSecrets(content);
+    expect(matches).toEqual([
+      { ruleId: 'github-token', confidence: 'high', from: 2, to: 2 + key.length, placeholder: false },
+      { ruleId: 'github-token', confidence: 'high', from: key.length + 5, to: 2 * key.length + 5, placeholder: false },
+    ]);
+    expect(content.slice(matches[1].from, matches[1].to)).toBe(key);
+  });
+
+  it('covers only the value of an assignment rule', () => {
+    const { content, value } = SAMPLES['aws-secret-key'];
+    const [match] = locateSecrets(content);
+    expect(match.ruleId).toBe('aws-secret-key');
+    expect(content.slice(match.from, match.to)).toBe(value.slice(0, 40));
+    expect(content.slice(0, match.from)).toBe('aws_secret_access_key = ');
+  });
+
+  it('covers a whole private key block', () => {
+    const content = `x\n${SAMPLES['private-key-pem'].content}y\n`;
+    const [match] = locateSecrets(content);
+    expect(content.slice(match.from, match.to)).toBe(SAMPLES['private-key-pem'].content.trimEnd());
+  });
+
+  it('flags placeholders, which the scan skips', () => {
+    expect(locateSecrets('id=AKIAIOSFODNN7EXAMPLE')).toEqual([{ ruleId: 'aws-access-key', confidence: 'high', from: 3, to: 23, placeholder: true }]);
+    expect(scanSecrets([{ path: 'a', content: 'id=AKIAIOSFODNN7EXAMPLE' }])).toEqual([]);
+  });
+
+  it('agrees with the scan on every sample', () => {
+    for (const { content } of Object.values(SAMPLES)) {
+      const located = [...new Set(locateSecrets(content).filter((m) => !m.placeholder).map((m) => m.ruleId))];
+      expect(located).toEqual(scanSecrets([{ path: 'f', content }]).map((f) => f.ruleId));
+    }
   });
 });

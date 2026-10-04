@@ -2,14 +2,21 @@ import { closeSync, existsSync, openSync, readFileSync, renameSync, rmSync, writ
 import {
   buildCommitMessage,
   clearBusy,
+  formatShipResult,
   markBusy,
+  nextStep,
   planRun,
   scanTextForSecrets,
+  shippedSummary,
+  SHIP_OUTCOMES,
   sweepBusy,
   type RunPlanInput,
   type RunPlanResult,
   type SecretFinding,
   type ShipgateConfig,
+  type ShipOutcome,
+  type ShipResult,
+  type StagingState,
 } from '@shipgate/core';
 import { requestReview, type ReviewRequest, type ReviewResponse } from '../agent-review.js';
 import { loadRepoConfig, readGlobalConfig, resolveApiKey } from '../config.js';
@@ -25,50 +32,10 @@ import {
   type GitRunner,
 } from '../git.js';
 import { classifyRemote, type RemoteInfo } from '../remote-public.js';
-import { detail, findingLine } from '../report.js';
 import { headChanges, scanStagedChanges, stagedChanges, type StagedChange } from '../scan-index.js';
 import { acquireShipLock } from '../ship-lock.js';
 
-export type ShipOutcome =
-  | 'not-repository'
-  | 'not-enabled'
-  | 'invalid-config'
-  | 'locked'
-  | 'busy'
-  | 'unsafe-state'
-  | 'nothing-to-ship'
-  | 'stage-failed'
-  | 'scan-failed'
-  | 'blocked'
-  | 'review-hold'
-  | 'review-unavailable'
-  | 'index-changed'
-  | 'commit-failed'
-  | 'hook-changed'
-  | 'push-failed'
-  | 'committed'
-  | 'pushed';
-
-const OUTCOMES: Record<ShipOutcome, { action: ShipResult['action']; exitCode: number; headline: string }> = {
-  'not-repository': { action: 'noop', exitCode: 0, headline: 'NOT A REPOSITORY' },
-  'not-enabled': { action: 'block', exitCode: 0, headline: 'NOT ENABLED' },
-  'invalid-config': { action: 'block', exitCode: 1, headline: 'CONFIG ERROR' },
-  locked: { action: 'hold', exitCode: 0, headline: 'HELD' },
-  busy: { action: 'hold', exitCode: 0, headline: 'HELD' },
-  'unsafe-state': { action: 'hold', exitCode: 1, headline: 'HELD' },
-  'nothing-to-ship': { action: 'noop', exitCode: 0, headline: 'NOTHING TO SHIP' },
-  'stage-failed': { action: 'hold', exitCode: 1, headline: 'FAILED' },
-  'scan-failed': { action: 'hold', exitCode: 1, headline: 'HELD' },
-  blocked: { action: 'block', exitCode: 0, headline: 'BLOCKED' },
-  'review-hold': { action: 'hold', exitCode: 0, headline: 'HELD' },
-  'review-unavailable': { action: 'hold', exitCode: 1, headline: 'HELD' },
-  'index-changed': { action: 'hold', exitCode: 1, headline: 'HELD' },
-  'commit-failed': { action: 'hold', exitCode: 1, headline: 'COMMIT FAILED' },
-  'hook-changed': { action: 'block', exitCode: 1, headline: 'COMMITTED, NOT PUSHED' },
-  'push-failed': { action: 'ship', exitCode: 1, headline: 'COMMITTED, NOT PUSHED' },
-  committed: { action: 'ship', exitCode: 0, headline: 'COMMITTED' },
-  pushed: { action: 'ship', exitCode: 0, headline: 'SHIPPED' },
-};
+export { formatShipResult, type ShipOutcome, type ShipResult };
 
 export interface ShipOptions {
   message?: string;
@@ -81,30 +48,6 @@ export interface ShipOptions {
   git?: GitRunner;
   review?: (request: ReviewRequest) => Promise<ReviewResponse>;
   classifyRemote?: (urls: string[]) => RemoteInfo;
-}
-
-/** What happened to the staging area in a run that did not commit. */
-export type StagingState = 'untouched' | 'restored' | 'kept-other-change' | 'not-restored';
-
-export interface ShipResult {
-  exitCode: number;
-  action: 'ship' | 'hold' | 'block' | 'noop';
-  outcome: ShipOutcome;
-  summary: string;
-  reasons: string[];
-  warnings: string[];
-  recommendations: string[];
-  notes: string[];
-  findings: SecretFinding[];
-  committed: boolean;
-  pushed: boolean;
-  staging?: StagingState;
-  sha?: string;
-  branch?: string;
-  subject?: string;
-  remote?: string;
-  review?: RunPlanResult['review'];
-  next?: string;
 }
 
 type Draft = Omit<ShipResult, 'exitCode' | 'action'>;
@@ -125,7 +68,7 @@ function draft(outcome: ShipOutcome, summary: string, extra: Partial<Draft> = {}
 }
 
 function finish(d: Draft): ShipResult {
-  return { exitCode: OUTCOMES[d.outcome].exitCode, action: OUTCOMES[d.outcome].action, ...d };
+  return { exitCode: SHIP_OUTCOMES[d.outcome].exitCode, action: SHIP_OUTCOMES[d.outcome].action, ...d };
 }
 
 /** Evaluate core policy for the facts known so far. Gates run in the same order as planRun. */
@@ -309,9 +252,8 @@ async function shipLocked(
   const branch = info.branch;
   const { live } = sweepBusy(info.gitDir);
   if (live.length) {
-    return fromPlan('busy', decide({ busyAgents: live.length }), {
-      next: 'Run shipgate ship again after the other agent finishes.',
-    });
+    const plan = decide({ busyAgents: live.length });
+    return fromPlan('busy', plan, { next: nextStep(plan, []) });
   }
   if (!branch) {
     return draft('unsafe-state', 'HEAD is detached.', {
@@ -378,12 +320,7 @@ async function shipLocked(
   let plan = planRun(input);
   const context = { findings, branch, remote: remote.description, notes };
   if (plan.action === 'block') {
-    return fromPlan('blocked', plan, {
-      ...context,
-      next: plan.code === 'public-destination'
-        ? 'Pass --public-ok (or run shipgate on --public-ok) if publishing to this destination is intended.'
-        : `Remove the credential${findings.some((f) => f.ruleId === 'dotenv-file') ? ' and keep .env files out of Git (.gitignore)' : ''}, or rerun with --force-secrets if it is a false positive.`,
-    });
+    return fromPlan('blocked', plan, { ...context, next: nextStep(plan, findings) });
   }
 
   if (plan.review === 'pending') {
@@ -404,14 +341,8 @@ async function shipLocked(
       response = { outcome: 'unavailable', detail: firstLine(error) };
     }
     plan = planRun({ ...input, review: { enabled: true, outcome: response.outcome, detail: response.detail } });
-    if (plan.code === 'review-hold') {
-      return fromPlan('review-hold', plan, { ...context, next: "Address the reviewer's concern, then run shipgate ship again." });
-    }
-    if (plan.code === 'review-unavailable') {
-      return fromPlan('review-unavailable', plan, {
-        ...context,
-        next: 'Fix the review setup, pass -m to skip review for this run, or run shipgate on --agent=false.',
-      });
+    if (plan.code === 'review-hold' || plan.code === 'review-unavailable') {
+      return fromPlan(plan.code, plan, { ...context, next: nextStep(plan, findings) });
     }
     if (!sameIndex(tx.stagedIndex, readIndex(tx.indexPath))) {
       return draft('index-changed', 'The staging area changed while Shipgate waited for review.', {
@@ -459,10 +390,7 @@ async function shipLocked(
   }
 
   if (remote.visibility === 'none') {
-    return fromPlan('committed', plan, {
-      ...committedFacts,
-      summary: `Committed ${sha} on ${branch}. There is no origin remote, so nothing was pushed.`,
-    });
+    return fromPlan('committed', plan, { ...committedFacts, summary: shippedSummary(sha, branch, false) });
   }
   const pushed = pushBranch(git, branch);
   const finalSha = git.run(['rev-parse', '--short', 'HEAD']);
@@ -480,31 +408,6 @@ async function shipLocked(
     ...committedFacts,
     sha: finalSha,
     pushed: true,
-    summary: `Pushed ${finalSha} to origin/${branch}.`,
+    summary: shippedSummary(finalSha, branch, true),
   });
-}
-
-const STAGING_TEXT: Record<StagingState, string> = {
-  untouched: 'Nothing was staged or committed.',
-  restored: 'Nothing was committed. The staging area is back to how it was before the run.',
-  'kept-other-change': 'Nothing was committed. Another Git command changed the staging area during the run, so Shipgate kept that version.',
-  'not-restored': 'Nothing was committed. Shipgate could not restore the staging area (index.lock exists), so all changes are still staged.',
-};
-
-/** Human-readable report, written to stderr by the CLI. */
-export function formatShipResult(result: ShipResult): string[] {
-  const { headline } = OUTCOMES[result.outcome];
-  const lines = [`shipgate: ${headline} — ${result.summary}`];
-  for (const finding of [...result.findings].sort((a, b) => a.path.localeCompare(b.path))) lines.push(findingLine(finding));
-  for (const reason of result.reasons) lines.push(detail('reason', reason));
-  for (const warning of result.warnings) lines.push(detail('warning', warning));
-  for (const advice of result.recommendations) lines.push(detail('advice', advice));
-  for (const note of result.notes) lines.push(detail('note', note));
-  if (result.sha) lines.push(detail('commit', `${result.sha} ${result.subject ?? ''}`.trim()));
-  if (result.committed && result.remote && result.outcome !== 'committed') lines.push(detail('remote', result.remote));
-  if (result.staging && result.outcome !== 'nothing-to-ship' && result.outcome !== 'not-enabled') {
-    lines.push(detail('result', STAGING_TEXT[result.staging]));
-  }
-  if (result.next) lines.push(detail('next', result.next));
-  return lines;
 }

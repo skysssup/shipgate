@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import type { RemoteVisibility } from '@shipgate/core';
+import { describeRemote, type RemoteVisibility } from '@shipgate/core';
 
 export interface GithubRepoRef {
   owner: string;
@@ -36,22 +36,13 @@ const RANK: Record<RemoteVisibility, number> = { none: 0, private: 1, 'other-hos
  * push URL makes the destination public.
  */
 export function classifyRemote(urls: string[], lookup: GithubVisibilityLookup = ghIsPrivate): RemoteInfo {
-  if (!urls.length) return { visibility: 'none', description: 'no origin remote (commits stay local)' };
+  if (!urls.length) return { visibility: 'none', description: describeRemote('none', '') };
   let worst: RemoteInfo | null = null;
   for (const url of urls) {
     const ref = parseGithubRemote(url);
-    let info: RemoteInfo;
-    if (!ref) {
-      info = { visibility: 'other-host', description: `${redactUrl(url)} (not GitHub; visibility not checked)` };
-    } else {
-      const isPrivate = lookup(ref);
-      const name = `github.com/${ref.owner}/${ref.repo}`;
-      info = isPrivate === true
-        ? { visibility: 'private', description: `${name} (private)` }
-        : isPrivate === false
-          ? { visibility: 'public', description: `${name} (public)` }
-          : { visibility: 'unknown', description: `${name} (visibility unknown; treated as public)` };
-    }
+    const isPrivate = ref ? lookup(ref) : undefined;
+    const visibility: RemoteVisibility = !ref ? 'other-host' : isPrivate === true ? 'private' : isPrivate === false ? 'public' : 'unknown';
+    const info = { visibility, description: describeRemote(visibility, ref ? `github.com/${ref.owner}/${ref.repo}` : redactUrl(url)) };
     if (!worst || RANK[info.visibility] > RANK[worst.visibility]) worst = info;
   }
   return worst!;
