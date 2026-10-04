@@ -1,11 +1,9 @@
-import * as Popover from '@radix-ui/react-popover';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Select from '@radix-ui/react-select';
-import * as SwitchPrimitive from '@radix-ui/react-switch';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { PlanAction } from '@shipgate/core/browser';
-import { Ban, Check, ChevronDown, CircleMinus, CirclePause, Copy, Info } from 'lucide-react';
-import { Fragment, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Ban, Check, ChevronDown, CircleMinus, CirclePause, Copy, Plus, type LucideIcon } from 'lucide-react';
+import { Fragment, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { ACTION_LABEL } from '../lib/model';
 
 export function cx(...names: Array<string | false | null | undefined>): string {
@@ -21,12 +19,12 @@ export function Button({ variant = 'secondary', size = 'md', className, type = '
   return <button type={type} className={cx('btn', `btn-${variant}`, size === 'sm' && 'btn-sm', className)} {...props} />;
 }
 
-export function Tip({ label, children, side = 'bottom' }: { label: string; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right' }) {
+export function Tip({ label, children, side = 'bottom' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content className="tooltip" side={side} sideOffset={6}>
+        <Tooltip.Content className="tooltip" side={side} sideOffset={6} collisionPadding={12}>
           {label}
         </Tooltip.Content>
       </Tooltip.Portal>
@@ -45,182 +43,20 @@ export function IconButton({ label, children, className, ...props }: ButtonHTMLA
   );
 }
 
-/** Small "i" button that opens an explanation. */
-export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Popover.Root>
-      <Popover.Trigger className="info-btn" aria-label={label}>
-        <Info size={14} aria-hidden />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content className="popover info-popover" sideOffset={6} collisionPadding={12}>
-          {children}
-          <Popover.Arrow className="popover-arrow" />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-export function Switch({
-  label,
-  description,
-  checked,
-  onChange,
-  info,
-  children,
-}: {
-  label: ReactNode;
-  description?: ReactNode;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  info?: ReactNode;
-  children?: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div className="field switch-field">
-      <div className="switch-row">
-        <div className="field-text">
-          <span className="field-label-line">
-            <label className="field-label" htmlFor={id}>
-              {label}
-            </label>
-            {info}
-          </span>
-          {description && (
-            <span className="field-hint" id={`${id}-hint`}>
-              {description}
-            </span>
-          )}
-        </div>
-        <SwitchPrimitive.Root
-          id={id}
-          className="switch"
-          checked={checked}
-          onCheckedChange={onChange}
-          aria-describedby={description ? `${id}-hint` : undefined}
-        >
-          <SwitchPrimitive.Thumb className="switch-thumb" />
-        </SwitchPrimitive.Root>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-export interface Choice<T extends string> {
-  value: T;
-  label: ReactNode;
-  hint?: string;
-}
-
-/** Segmented radio group. Arrow keys move between options. */
-export function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  className,
-  describedBy,
-}: {
-  label: string;
-  value: T;
-  options: Array<Choice<T>>;
-  onChange: (value: T) => void;
-  className?: string;
-  describedBy?: string;
-}) {
-  return (
-    <RadioGroup.Root
-      className={cx('segmented', className)}
-      value={value}
-      onValueChange={(v) => onChange(v as T)}
-      aria-label={label}
-      aria-describedby={describedBy}
-      orientation="horizontal"
-      loop
-    >
-      {options.map((option) => (
-        <RadioGroup.Item key={option.value} value={option.value} className="segmented-item" title={option.hint}>
-          {option.label}
-        </RadioGroup.Item>
-      ))}
-    </RadioGroup.Root>
-  );
-}
-
-export function SelectField<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  info,
-  hint,
-}: {
-  label: string;
-  value: T;
-  options: Array<Choice<T>>;
-  onChange: (value: T) => void;
-  info?: ReactNode;
-  hint?: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div className="field">
-      <span className="field-label-line">
-        <label className="field-label" htmlFor={id} id={`${id}-label`}>
-          {label}
-        </label>
-        {info}
-      </span>
-      <Select.Root value={value} onValueChange={(v) => onChange(v as T)}>
-        <Select.Trigger id={id} className="select-trigger" aria-labelledby={`${id}-label`} aria-describedby={hint ? `${id}-hint` : undefined}>
-          <Select.Value />
-          <Select.Icon className="select-icon">
-            <ChevronDown size={14} aria-hidden />
-          </Select.Icon>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Content className="select-content" position="popper" sideOffset={4} collisionPadding={12}>
-            <Select.Viewport className="select-viewport">
-              {options.map((option) => (
-                <Select.Item key={option.value} value={option.value} className="select-item">
-                  <Select.ItemText>{option.label}</Select.ItemText>
-                  {option.hint && <span className="select-item-hint">{option.hint}</span>}
-                  <Select.ItemIndicator className="select-item-check">
-                    <Check size={14} aria-hidden />
-                  </Select.ItemIndicator>
-                </Select.Item>
-              ))}
-            </Select.Viewport>
-          </Select.Content>
-        </Select.Portal>
-      </Select.Root>
-      {hint && (
-        <span className="field-hint" id={`${id}-hint`}>
-          {hint}
-        </span>
-      )}
-    </div>
-  );
-}
-
-const ACTION_ICON: Record<PlanAction, typeof Check> = { ship: Check, hold: CirclePause, block: Ban, noop: CircleMinus };
-
-export function ActionBadge({ action, size = 'md' }: { action: PlanAction; size?: 'sm' | 'md' }) {
-  const Icon = ACTION_ICON[action];
-  return (
-    <span className={cx('badge', `tone-${action}`, size === 'sm' && 'badge-sm')}>
-      <Icon size={size === 'sm' ? 11 : 13} strokeWidth={2.5} aria-hidden />
-      {ACTION_LABEL[action]}
-    </span>
-  );
-}
+const ACTION_ICON: Record<PlanAction, LucideIcon> = { ship: Check, hold: CirclePause, block: Ban, noop: CircleMinus };
 
 export function ActionIcon({ action, size = 18 }: { action: PlanAction; size?: number }) {
   const Icon = ACTION_ICON[action];
   return <Icon size={size} strokeWidth={2.25} aria-hidden />;
+}
+
+export function ActionBadge({ action }: { action: PlanAction }) {
+  return (
+    <span className={cx('badge', `tone-${action}`)}>
+      <ActionIcon action={action} size={11} />
+      {ACTION_LABEL[action]}
+    </span>
+  );
 }
 
 /** Icon button that copies text and confirms in its label. */
@@ -254,35 +90,185 @@ export function InlineCode({ text }: { text: string }) {
   );
 }
 
-export function Panel({
+/** A titled region. The heading level follows the page outline. */
+export function Section({
   title,
-  icon,
+  meta,
   actions,
   children,
   className,
   id,
-  headingLevel = 2,
+  level = 2,
+  hideTitle = false,
+  ref,
 }: {
-  title: ReactNode;
-  icon?: ReactNode;
+  title: string;
+  meta?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
   id?: string;
-  headingLevel?: 2 | 3;
+  level?: 2 | 3;
+  hideTitle?: boolean;
+  ref?: Ref<HTMLElement>;
 }) {
-  const Heading = headingLevel === 2 ? 'h2' : 'h3';
+  const Heading = level === 2 ? 'h2' : 'h3';
   const headingId = useId();
   return (
-    <section className={cx('panel', className)} aria-labelledby={headingId} id={id}>
-      <header className="panel-header">
-        <Heading className="panel-title" id={headingId}>
-          {icon}
+    <section className={cx('section', className)} aria-labelledby={headingId} id={id} ref={ref} tabIndex={ref ? -1 : undefined}>
+      <header className={cx('section-head', hideTitle && 'sr-only')}>
+        <Heading className="section-title" id={headingId}>
           {title}
         </Heading>
-        {actions && <div className="panel-actions">{actions}</div>}
+        {meta && <span className="section-meta">{meta}</span>}
+        {actions && <div className="section-actions">{actions}</div>}
       </header>
       {children}
     </section>
+  );
+}
+
+/** A command-line flag that can be switched on and off. */
+export function FlagToken({
+  flag,
+  pressed,
+  onChange,
+  description,
+  cause,
+  id,
+}: {
+  flag: string;
+  pressed: boolean;
+  onChange: (pressed: boolean) => void;
+  description: string;
+  cause?: 'stop' | 'warn';
+  id?: string;
+}) {
+  const hintId = useId();
+  return (
+    <>
+      <Tip label={description}>
+        <button
+          type="button"
+          id={id}
+          className="token token-flag"
+          aria-pressed={pressed}
+          aria-describedby={hintId}
+          data-cause={cause}
+          onClick={() => onChange(!pressed)}
+        >
+          <span className="token-mark" aria-hidden>
+            {pressed ? <Check size={11} strokeWidth={3} /> : <Plus size={11} strokeWidth={3} />}
+          </span>
+          {flag}
+        </button>
+      </Tip>
+      <span id={hintId} className="sr-only">
+        {description}
+      </span>
+    </>
+  );
+}
+
+export interface Choice<T extends string> {
+  value: T;
+  label: string;
+  hint?: string;
+  icon?: LucideIcon;
+}
+
+/** Mutually exclusive values for one flag, such as --level. Arrow keys move between them. */
+export function TokenChoice<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  describedBy,
+}: {
+  label: string;
+  value: T;
+  options: Array<Choice<T>>;
+  onChange: (value: T) => void;
+  describedBy?: string;
+}) {
+  return (
+    <RadioGroup.Root
+      className="token-choice"
+      value={value}
+      onValueChange={(v) => onChange(v as T)}
+      aria-label={label}
+      aria-describedby={describedBy}
+      orientation="horizontal"
+      loop
+    >
+      {options.map((option) => (
+        <RadioGroup.Item key={option.value} value={option.value} className="token-choice-item">
+          {option.label}
+        </RadioGroup.Item>
+      ))}
+    </RadioGroup.Root>
+  );
+}
+
+function SelectItems<T extends string>({ options }: { options: Array<Choice<T>> }) {
+  return (
+    <Select.Portal>
+      <Select.Content className="select-content" position="popper" sideOffset={6} collisionPadding={12}>
+        <Select.Viewport className="select-viewport">
+          {options.map(({ value, label, hint, icon: Icon }) => (
+            <Select.Item key={value} value={value} className="select-item">
+              {Icon && <Icon size={14} aria-hidden className="select-item-icon" />}
+              <span className="select-item-text">
+                <Select.ItemText>{label}</Select.ItemText>
+                {hint && <span className="select-item-hint">{hint}</span>}
+              </span>
+              <Select.ItemIndicator className="select-item-check">
+                <Check size={14} aria-hidden />
+              </Select.ItemIndicator>
+            </Select.Item>
+          ))}
+        </Select.Viewport>
+      </Select.Content>
+    </Select.Portal>
+  );
+}
+
+/** A repository fact shown as a compact chip that opens a menu of values. */
+export function FactSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  cause,
+  id,
+  description,
+}: {
+  label: string;
+  value: T;
+  options: Array<Choice<T>>;
+  onChange: (value: T) => void;
+  cause?: 'stop' | 'warn';
+  id: string;
+  description: string;
+}) {
+  const current = options.find((o) => o.value === value) ?? options[0];
+  const Icon = current.icon;
+  return (
+    <div className="fact" data-cause={cause}>
+      <span className="fact-label" id={`${id}-label`} title={description}>
+        {label}
+      </span>
+      <Select.Root value={value} onValueChange={(v) => onChange(v as T)}>
+        <Select.Trigger id={id} className="fact-trigger" aria-labelledby={`${id}-label`} aria-describedby={`${id}-hint`}>
+          {Icon && <Icon size={14} aria-hidden className="fact-icon" />}
+          <Select.Value />
+          <ChevronDown size={13} aria-hidden className="fact-chevron" />
+        </Select.Trigger>
+        <SelectItems options={options} />
+      </Select.Root>
+      <span id={`${id}-hint`} className="sr-only">
+        {description}
+      </span>
+    </div>
   );
 }

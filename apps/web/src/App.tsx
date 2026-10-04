@@ -90,15 +90,17 @@ export function App() {
           {view === 'rules' && <RulesView onTry={tryRule} />}
           {view === 'start' && <StartView version={pkg.version} />}
         </main>
-        <footer className="footer">
-          <span>Shipgate {pkg.version}</span>
-          <span aria-hidden>·</span>
-          <span>MIT license</span>
-          <span aria-hidden>·</span>
-          <a href="./third-party-licenses.txt">Third-party licenses</a>
-          <span aria-hidden>·</span>
-          <span>The simulator runs the CLI&apos;s decision code in this browser. It never touches a repository.</span>
-        </footer>
+        {view !== 'simulator' && (
+          <footer className="footer">
+            <span>Shipgate {pkg.version}</span>
+            <span aria-hidden>·</span>
+            <span>MIT license</span>
+            <span aria-hidden>·</span>
+            <a href="./third-party-licenses.txt">Third-party licenses</a>
+            <span aria-hidden>·</span>
+            <span>The simulator runs the CLI&apos;s decision code in this browser. It never touches a repository.</span>
+          </footer>
+        )}
         <div className="sr-only announcer" aria-live="polite" aria-atomic="true">
           {view === 'simulator' ? announcement : ''}
         </div>

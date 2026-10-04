@@ -9,6 +9,7 @@ import {
   scanTextForSecrets,
   simulateShip,
   type DemoScenario,
+  type GateId,
   type RemoteVisibility,
   type RunPlanInput,
   type RunPlanResult,
@@ -137,6 +138,35 @@ export function evaluate(state: SimState): Evaluation {
   return { input, result: planRun(input), report, output: formatShipResult(report) };
 }
 
+/** The input that each check reads. */
+export type CauseTarget = 'opt-in' | 'agents' | 'tree' | 'findings' | 'origin' | 'reviewer';
+
+const GATE_TARGET: Record<GateId, CauseTarget> = {
+  'opt-in': 'opt-in',
+  busy: 'agents',
+  changes: 'tree',
+  credentials: 'findings',
+  destination: 'origin',
+  review: 'reviewer',
+};
+
+const STOPS = new Set(['block', 'hold', 'noop']);
+
+/** Inputs behind the decision: those whose check stopped the run, then those whose check warned. */
+export function causes(result: RunPlanResult): Partial<Record<CauseTarget, 'stop' | 'warn'>> {
+  const out: Partial<Record<CauseTarget, 'stop' | 'warn'>> = {};
+  for (const gate of result.gates) {
+    if (STOPS.has(gate.status)) out[GATE_TARGET[gate.gate]] = 'stop';
+    else if (gate.status === 'warn') out[GATE_TARGET[gate.gate]] ??= 'warn';
+  }
+  return out;
+}
+
+/** The input behind each blocking reason, in the order planRun lists the reasons. */
+export function reasonTargets(result: RunPlanResult): CauseTarget[] {
+  return result.gates.filter((g) => STOPS.has(g.status)).map((g) => GATE_TARGET[g.gate]).slice(0, result.reasons.length);
+}
+
 /** One sentence on what the run would leave behind, phrased for a simulation. */
 export function whatHappens(report: ShipResult): string {
   switch (report.outcome) {
@@ -192,7 +222,13 @@ const REVIEW_CHANGE: Record<ReviewChoice, string> = {
   off: 'Turn external review off',
   approve: 'The reviewer approves',
   hold: 'The reviewer asks to hold',
-  unavailable: 'Review cannot run',
+  unavailable: 'The review cannot run',
+};
+
+const REVIEW_ENABLE: Record<Exclude<ReviewChoice, 'off'>, string> = {
+  approve: 'Turn on external review, and it approves',
+  hold: 'Turn on external review, and it asks to hold',
+  unavailable: 'Turn on external review, and it cannot run',
 };
 
 /**
@@ -227,7 +263,9 @@ export function suggestions(state: SimState): Suggestion[] {
     if (remote !== state.remote) add(`remote:${remote}`, REMOTE_CHANGE[remote], { remote });
   }
   for (const review of Object.keys(REVIEW_CHANGE) as ReviewChoice[]) {
-    if (review !== state.review) add(`review:${review}`, REVIEW_CHANGE[review], { review, reviewDetail: defaultReviewDetail(review, state.scenarioId) });
+    if (review === state.review) continue;
+    const label = state.review === 'off' && review !== 'off' ? REVIEW_ENABLE[review] : REVIEW_CHANGE[review];
+    add(`review:${review}`, label, { review, reviewDetail: defaultReviewDetail(review, state.scenarioId) });
   }
   if (state.busyAgents === 0) add('busy', 'Another agent starts working', { busyAgents: 1 });
   if (state.configPresent) add('disable', 'Turn Shipgate off with shipgate off', { configPresent: false });

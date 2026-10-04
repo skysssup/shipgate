@@ -31,9 +31,8 @@ async function verdict(page: Page): Promise<{ label: string; summary: string }> 
   };
 }
 
-/** The input and result the page used, read from the JSON disclosure in the Terminal tab. */
+/** The input and result the page used, read from the JSON disclosure under the CLI output. */
 async function shownState(page: Page): Promise<{ input: RunPlanInput; result: RunPlanResult }> {
-  await page.getByRole('tab', { name: 'Terminal' }).click();
   const details = page.locator('details.disclosure');
   if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator('summary').click();
   return JSON.parse(await details.locator('pre').innerText());
@@ -41,7 +40,15 @@ async function shownState(page: Page): Promise<{ input: RunPlanInput; result: Ru
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pickExample = (page: Page, title: string) => page.getByRole('radio', { name: new RegExp(`^${escape(title)}`) }).click();
-const toggle = (page: Page, name: string) => page.getByRole('switch', { name, exact: true });
+const flag = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
+
+async function tabUntil(page: Page, target: ReturnType<Page['locator']>, presses = 12) {
+  for (let i = 0; i < presses; i += 1) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press('Tab');
+  }
+  await expect(target).toBeFocused();
+}
 
 async function choose(page: Page, combobox: string, option: string) {
   await page.getByRole('combobox', { name: combobox }).click();
@@ -138,20 +145,24 @@ test('every control feeds the planRun input', async ({ page }) => {
     ['--public-ok', 'publicOk'],
     ['--confirm', 'confirm'],
   ];
-  for (const [name, flag] of flags) {
-    await toggle(page, name).click();
-    expect((await shownState(page)).input.flags[flag]).toBe(true);
-    await toggle(page, name).click();
-    expect((await shownState(page)).input.flags[flag]).toBe(false);
+  for (const [name, key] of flags) {
+    await flag(page, name).click();
+    await expect(flag(page, name)).toHaveAttribute('aria-pressed', 'true');
+    expect((await shownState(page)).input.flags[key]).toBe(true);
+    await flag(page, name).click();
+    await expect(flag(page, name)).toHaveAttribute('aria-pressed', 'false');
+    expect((await shownState(page)).input.flags[key]).toBe(false);
   }
-  await toggle(page, '-m').click();
+  await flag(page, '-m').click();
   await page.getByLabel('Commit message').fill('Add settings');
   expect((await shownState(page)).input.flags.message).toBe('Add settings');
-  await choose(page, 'origin', 'GitHub, visibility unknown');
-  await page.getByRole('radiogroup', { name: 'Other agents busy' }).getByRole('radio', { name: '2' }).click();
-  await choose(page, 'External review', 'On: review cannot run');
-  await toggle(page, 'Uncommitted changes').click();
-  await toggle(page, 'Shipgate enabled').click();
+  await choose(page, 'origin', 'GitHub, unknown');
+  await choose(page, 'Other agents', '2 busy');
+  await flag(page, '--agent').click();
+  await choose(page, 'Reviewer', 'Cannot run');
+  await choose(page, 'Working tree', 'Clean');
+  await choose(page, 'Shipgate', 'Not enabled');
+  await expect(page.getByText('not run here')).toBeVisible();
   const { input } = await shownState(page);
   expect(input).toMatchObject({
     remote: 'unknown',
@@ -160,13 +171,16 @@ test('every control feeds the planRun input', async ({ page }) => {
     dirtyFiles: [],
     review: { enabled: true, outcome: 'unavailable', detail: 'no API key (set OPENROUTER_API_KEY or run shipgate on --key)' },
   });
+  await flag(page, '--agent').click();
+  await expect(page.getByRole('combobox', { name: 'Reviewer' })).toHaveCount(0);
+  expect((await shownState(page)).input.review).toEqual({ enabled: false });
 });
 
 test('acknowledging a public destination keeps the destination public', async ({ page }) => {
   await pickExample(page, 'Public destination on strict');
-  await toggle(page, '--public-ok').click();
+  await flag(page, '--public-ok').click();
   expect((await verdict(page)).label).toBe('Ship');
-  await expect(page.getByRole('combobox', { name: 'origin' })).toHaveText(/Public GitHub repository/);
+  await expect(page.getByRole('combobox', { name: 'origin' })).toHaveText(/Public GitHub/);
   expect((await shownState(page)).input.remote).toBe('public');
   await expect(decision(page).getByRole('heading', { name: 'Recommendations' })).toBeVisible();
 });
@@ -226,24 +240,24 @@ test('files can be added from rule samples and from this device, and removed', a
   expect((await shownState(page)).input.dirtyFiles).toEqual(['src/greeting.ts', 'src/greeting.test.ts', 'notes.md']);
 });
 
-test('what-if suggestions are applied in one click and checked by core', async ({ page }) => {
+test('suggested changes are applied in one click and checked by core', async ({ page }) => {
   await pickExample(page, 'API key in a .env file');
-  await page.getByRole('tab', { name: 'What-if' }).click();
-  const force = page.getByRole('listitem').filter({ hasText: 'Pass --force-secrets' });
+  const fixes = page.getByRole('region', { name: 'Change the outcome' });
+  const force = fixes.getByRole('listitem').filter({ hasText: 'Pass --force-secrets' });
   await expect(force).toContainText('Only for false positives');
   await expect(force).toContainText('Ship');
   await force.getByRole('button', { name: 'Apply: Pass --force-secrets' }).click();
   expect((await verdict(page)).label).toBe('Ship');
-  await expect(toggle(page, '--force-secrets')).toBeChecked();
+  await expect(flag(page, '--force-secrets')).toHaveAttribute('aria-pressed', 'true');
   await expect(decision(page)).toBeFocused();
+  await expect(page.getByRole('region', { name: 'What would stop it' })).toBeVisible();
   const { input, result } = await shownState(page);
   expect(planRun(input)).toEqual(result);
 });
 
-test('the levels tab compares strict, balanced, and yolo and switches level', async ({ page }) => {
+test('the level comparison covers strict, balanced, and yolo and switches level', async ({ page }) => {
   await pickExample(page, 'Sample JWT in a test fixture');
-  await page.getByRole('tab', { name: 'Levels' }).click();
-  const rows = page.locator('.level-row');
+  const rows = page.getByRole('region', { name: 'At each level' }).getByRole('listitem');
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText('Block');
   await expect(rows.nth(2)).toContainText('Ship');
@@ -255,8 +269,8 @@ test('the levels tab compares strict, balanced, and yolo and switches level', as
 test('share links restore the example and settings', async ({ page, browser, baseURL }) => {
   await pickExample(page, 'Sample JWT in a test fixture');
   await page.getByRole('radio', { name: 'yolo', exact: true }).click();
-  await toggle(page, '--confirm').click();
-  await choose(page, 'origin', 'Public GitHub repository');
+  await flag(page, '--confirm').click();
+  await choose(page, 'origin', 'Public GitHub');
   await page.getByRole('button', { name: 'Share' }).click();
   const url = await page.getByLabel('Link', { exact: true }).inputValue();
   expect(url).toBe(`${baseURL}#/?example=medium-jwt&level=yolo&origin=public&confirm=1`);
@@ -265,7 +279,7 @@ test('share links restore the example and settings', async ({ page, browser, bas
   const other = await browser.newPage();
   await other.goto(url);
   await expect(other.getByRole('radio', { name: 'yolo', exact: true })).toBeChecked();
-  await expect(other.getByRole('switch', { name: '--confirm', exact: true })).toBeChecked();
+  await expect(other.getByRole('button', { name: '--confirm', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(other.locator('.verdict-label')).toHaveText('Ship');
   await other.close();
 
@@ -331,33 +345,73 @@ test('works with the keyboard alone, with visible focus', async ({ page }) => {
   await expect(page.locator('#main')).toBeFocused();
 
   const first = page.getByRole('radio', { name: /^Ordinary change/ });
-  await page.keyboard.press('Tab');
-  if (await page.getByRole('complementary', { name: 'Examples' }).evaluate((el) => el === document.activeElement)) await page.keyboard.press('Tab');
-  await expect(first).toBeFocused();
+  await tabUntil(page, first, 3);
   expect(await first.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
   await page.keyboard.press('ArrowDown', { delay: 60 });
   await expect(page.getByRole('radio', { name: /^API key in a \.env file/ })).toBeChecked();
   expect((await verdict(page)).label).toBe('Block');
 
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('radio', { name: 'balanced', exact: true })).toBeFocused();
+  const balanced = page.getByRole('radio', { name: 'balanced', exact: true });
+  await tabUntil(page, balanced);
   await page.keyboard.press('ArrowRight', { delay: 60 });
   await expect(page.getByRole('radio', { name: 'yolo', exact: true })).toBeChecked();
 
-  const force = toggle(page, '--force-secrets');
+  const force = flag(page, '--force-secrets');
   await force.focus();
   await page.keyboard.press('Space');
-  await expect(force).toBeChecked();
+  await expect(force).toHaveAttribute('aria-pressed', 'true');
   expect((await verdict(page)).label).toBe('Ship');
 
-  const checks = page.getByRole('tab', { name: 'Checks' });
-  await checks.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: 'What-if' })).toHaveAttribute('aria-selected', 'true');
+  const origin = page.getByRole('combobox', { name: 'origin' });
+  await origin.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('option', { name: /^Private GitHub/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('option', { name: /^Public GitHub/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(origin).toHaveText(/Public GitHub/);
+  await expect(origin).toBeFocused();
 
   await page.getByRole('button', { name: 'Reset' }).first().focus();
   await page.keyboard.press('Enter');
-  await expect(force).not.toBeChecked();
+  await expect(force).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('changes that replace the inputs can be undone', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Contents of src/greeting.ts' }).click();
+  await page.keyboard.type(`// ${TOKEN}\n`);
+  await expect(decision(page).locator('.verdict-label')).toHaveText('Block');
+  await pickExample(page, 'Another agent is mid-turn');
+  const toast = page.locator('.toast');
+  await expect(toast).toContainText('Loaded “Another agent is mid-turn”. Your changes were discarded.');
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByRole('radio', { name: /^Ordinary change/ })).toBeChecked();
+  await expect(page.locator('.cm-secret-high')).toHaveText(TOKEN);
+  await expect(toast).toHaveCount(0);
+
+  await page.getByRole('region', { name: 'Change the outcome' }).getByRole('button', { name: 'Apply: Pass --force-secrets' }).click();
+  await expect(toast).toContainText('Applied: Pass --force-secrets.');
+  expect((await verdict(page)).label).toBe('Ship');
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  expect((await verdict(page)).label).toBe('Block');
+  await expect(flag(page, '--force-secrets')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('reasons link to the input behind the decision', async ({ page }) => {
+  await pickExample(page, 'Public destination on strict');
+  const origin = page.getByRole('combobox', { name: 'origin' });
+  await expect(page.locator('.fact').filter({ has: origin })).toHaveAttribute('data-cause', 'stop');
+  await decision(page).getByRole('button', { name: 'Show the origin setting' }).click();
+  await expect(origin).toBeFocused();
+
+  await pickExample(page, 'API key in a .env file');
+  await expect(page.locator('#scan-results')).toHaveAttribute('data-cause', 'stop');
+  await decision(page).getByRole('button', { name: 'Show the findings' }).click();
+  await expect(page.locator('#scan-results')).toBeFocused();
+
+  await flag(page, '--force-secrets').click();
+  await expect(flag(page, '--force-secrets')).toHaveAttribute('data-cause', 'warn');
+  await expect(page.locator('#scan-results')).toHaveAttribute('data-cause', 'warn');
 });
 
 for (const width of [360, 390, 640, 768, 1024, 1280, 1440]) {
@@ -409,12 +463,21 @@ test('respects reduced motion', async ({ page }) => {
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`text meets WCAG AA contrast in the ${colorScheme} theme`, async ({ page }) => {
     await page.emulateMedia({ colorScheme });
-    const pages = ['#/?example=credential-in-env', '#/?example=busy-agent', '#/?example=placeholder-template&level=yolo', '#/?example=medium-jwt&level=yolo', '#/rules', '#/start'];
+    const pages = [
+      '#/?example=credential-in-env',
+      '#/?example=busy-agent',
+      '#/?example=placeholder-template&level=yolo',
+      '#/?example=medium-jwt&level=yolo&force=1',
+      '#/?example=not-enabled',
+      '#/?example=review-hold&m=1',
+      '#/?example=clean-change&changes=0',
+      '#/rules',
+      '#/start',
+    ];
     for (const view of pages) {
       await page.goto(`./${view}`);
       await page.waitForTimeout(100);
-      for (const tab of view.startsWith('#/?') ? ['Checks', 'What-if', 'Levels', 'Terminal'] : [null]) {
-        if (tab) await page.getByRole('tab', { name: tab }).click();
+      {
         const ratios = await page.evaluate(() => {
           const parse = (c: string): number[] => {
             const numbers = (c.match(/[\d.]+/g) ?? []).map(Number);
@@ -456,7 +519,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
           });
         });
         expect(ratios.length).toBeGreaterThan(10);
-        for (const { text, ratio } of ratios) expect(ratio, `${colorScheme} ${view} ${tab ?? ''}: "${text}"`).toBeGreaterThanOrEqual(4.5);
+        for (const { text, ratio } of ratios) expect(ratio, `${colorScheme} ${view}: "${text}"`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

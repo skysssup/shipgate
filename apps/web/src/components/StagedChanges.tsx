@@ -1,11 +1,11 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { RULE_SAMPLES, SECRET_RULES, type SecretFinding } from '@shipgate/core/browser';
-import { ChevronRight, FilePlus2, FileText, FolderOpen, KeyRound, LockKeyhole, Plus, Trash2, Upload } from 'lucide-react';
-import { useId, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { ChevronRight, FilePlus2, FolderOpen, KeyRound, LockKeyhole, Plus, Trash2, Upload } from 'lucide-react';
+import { useId, useImperativeHandle, useRef, useState, type DragEvent, type KeyboardEvent, type Ref } from 'react';
 import { findingEffect, pathProblem, skippedPlaceholders, type FindingEffect, type SimState } from '../lib/model';
 import type { SimAction } from '../lib/state';
 import { CodeEditor, type CodeEditorHandle, type Cursor } from './CodeEditor';
-import { Button, cx, IconButton, Panel } from './ui';
+import { Button, cx, IconButton, Section } from './ui';
 
 const MAX_FILE_BYTES = 1024 * 1024;
 
@@ -15,6 +15,10 @@ const EFFECT: Record<FindingEffect, { label: string; tone: string; hint: string 
   overridden: { label: 'Overridden', tone: 'hold', hint: '--force-secrets lets this finding through with a warning.' },
 };
 
+export interface StagedChangesHandle {
+  showFindings: () => void;
+}
+
 function uniqueName(base: string, taken: string[]): string {
   if (!taken.includes(base)) return base;
   const dot = base.lastIndexOf('.');
@@ -22,10 +26,23 @@ function uniqueName(base: string, taken: string[]): string {
   for (let n = 2; ; n += 1) if (!taken.includes(`${stem}-${n}${ext}`)) return `${stem}-${n}${ext}`;
 }
 
-export function StagedChanges({ state, dispatch, findings }: { state: SimState; dispatch: (action: SimAction) => void; findings: SecretFinding[] }) {
+export function StagedChanges({
+  state,
+  dispatch,
+  findings,
+  findingsCause,
+  ref,
+}: {
+  state: SimState;
+  dispatch: (action: SimAction) => void;
+  findings: SecretFinding[];
+  findingsCause?: 'stop' | 'warn';
+  ref?: Ref<StagedChangesHandle>;
+}) {
   const editor = useRef<CodeEditorHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const tablist = useRef<HTMLDivElement>(null);
+  const results = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<Cursor>({ line: 1, column: 1, lines: 1 });
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState('');
@@ -41,7 +58,19 @@ export function StagedChanges({ state, dispatch, findings }: { state: SimState; 
   const perFile = new Map<string, SecretFinding[]>();
   for (const finding of findings) perFile.set(finding.path, [...(perFile.get(finding.path) ?? []), finding]);
   const skipped = skippedPlaceholders(state.hasChanges ? state.files : []);
-  const fileFindings = findings.filter((f) => f.path !== '--message');
+
+  const reveal = (path: string, line?: number) => {
+    if (path === '--message') return;
+    dispatch({ type: 'file-select', path });
+    requestAnimationFrame(() => editor.current?.revealLine(line ?? 1));
+  };
+
+  useImperativeHandle(ref, () => ({
+    showFindings() {
+      results.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      results.current?.focus({ preventScroll: true });
+    },
+  }), []);
 
   const addFiles = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -73,12 +102,6 @@ export function StagedChanges({ state, dispatch, findings }: { state: SimState; 
     const next = state.files[(keys[event.key] + state.files.length) % state.files.length];
     dispatch({ type: 'file-select', path: next.path });
     requestAnimationFrame(() => tablist.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus());
-  };
-
-  const reveal = (path: string, line?: number) => {
-    if (path === '--message') return;
-    dispatch({ type: 'file-select', path });
-    requestAnimationFrame(() => editor.current?.revealLine(line ?? 1));
   };
 
   const addMenu = (
@@ -124,238 +147,231 @@ export function StagedChanges({ state, dispatch, findings }: { state: SimState; 
     </DropdownMenu.Root>
   );
 
+  const fileCount = state.files.length;
   return (
-    <>
-      <Panel
-        title="Staged changes"
-        icon={<FileText size={16} aria-hidden />}
-        className={cx('files-panel', dragging && 'is-dragging', !state.hasChanges && 'is-clean')}
-        actions={addMenu}
+    <Section
+      title="Staged changes"
+      className={cx('staged', dragging && 'is-dragging', !state.hasChanges && 'is-clean')}
+      meta={`${fileCount} ${fileCount === 1 ? 'file' : 'files'}${state.hasChanges ? '' : ', not staged'}`}
+      actions={addMenu}
+    >
+      <div
+        className="staged-body"
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
+        }}
+        onDrop={onDrop}
       >
-        <div
-          className="files-body"
-          onDragOver={(event) => {
-            if (!event.dataTransfer.types.includes('Files')) return;
-            event.preventDefault();
-            setDragging(true);
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            void addFiles(event.target.files);
+            event.target.value = '';
           }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
-          }}
-          onDrop={onDrop}
-        >
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              void addFiles(event.target.files);
-              event.target.value = '';
-            }}
-          />
-          {!state.hasChanges && (
-            <div className="callout callout-muted" role="note">
-              <span>The working tree is clean, so these files are not part of the run.</span>
-              <Button size="sm" onClick={() => dispatch({ type: 'set', patch: { hasChanges: true } })}>
-                Include them
+        />
+        {!state.hasChanges && (
+          <div className="callout" role="note">
+            <span>The working tree is clean, so these files are not part of the run.</span>
+            <Button size="sm" onClick={() => dispatch({ type: 'set', patch: { hasChanges: true } })}>
+              Include them
+            </Button>
+          </div>
+        )}
+        {active ? (
+          <div className="editor-frame">
+            <div className="file-tabs" role="tablist" aria-label="Files" ref={tablist}>
+              {state.files.map((file, index) => {
+                const count = perFile.get(file.path)?.length ?? 0;
+                const selected = file === active;
+                const slash = file.path.lastIndexOf('/');
+                return (
+                  <button
+                    key={file.path}
+                    type="button"
+                    role="tab"
+                    id={`${panelId}-tab-${index}`}
+                    aria-selected={selected}
+                    aria-controls={panelId}
+                    tabIndex={selected ? 0 : -1}
+                    aria-label={count ? `${file.path}, ${count} ${count === 1 ? 'finding' : 'findings'}` : file.path}
+                    className="file-tab"
+                    onClick={() => dispatch({ type: 'file-select', path: file.path })}
+                    onKeyDown={(event) => onTabKey(event, index)}
+                  >
+                    {slash > 0 && <span className="file-tab-dir">{file.path.slice(0, slash + 1)}</span>}
+                    <span className="file-tab-name">{file.path.slice(slash + 1)}</span>
+                    {count > 0 && (
+                      <span className="file-tab-count" aria-hidden>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="file-pane" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-tab-${state.files.indexOf(active)}`}>
+              <div className="file-toolbar">
+                <label className="file-path-label" htmlFor={pathId}>
+                  Path
+                </label>
+                <input
+                  id={pathId}
+                  className={cx('path-input', problem && 'is-invalid')}
+                  value={draftPath}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-label="Path of the selected file"
+                  aria-invalid={Boolean(problem)}
+                  aria-describedby={problem ? `${pathId}-error` : `${pathId}-hint`}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (pathProblem(next, otherPaths)) {
+                      setInvalidPath({ file: active.path, text: next });
+                    } else {
+                      setInvalidPath(null);
+                      dispatch({ type: 'file-rename', path: active.path, to: next });
+                    }
+                  }}
+                />
+                <IconButton label={`Remove ${active.path} from the change`} onClick={() => dispatch({ type: 'file-remove', path: active.path })}>
+                  <Trash2 size={15} aria-hidden />
+                </IconButton>
+              </div>
+              {problem ? (
+                <p className="field-error" id={`${pathId}-error`}>
+                  {problem}
+                </p>
+              ) : (
+                <p className="sr-only" id={`${pathId}-hint`}>
+                  Renaming a file changes which filename rules apply, for example .env.
+                </p>
+              )}
+              <CodeEditor
+                ref={editor}
+                docKey={active.path}
+                value={active.content}
+                label={`Contents of ${active.path}`}
+                onChange={(content) => dispatch({ type: 'file-edit', path: active.path, content })}
+                onCursor={setCursor}
+              />
+              <div className="status-bar">
+                <span>
+                  Ln {cursor.line}, Col {cursor.column}
+                </span>
+                <span>
+                  {cursor.lines} {cursor.lines === 1 ? 'line' : 'lines'}
+                </span>
+                <span className="status-local">
+                  <LockKeyhole size={12} aria-hidden />
+                  Scanned in this browser
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="empty">
+            <p>No files in the change.</p>
+            <div className="empty-actions">
+              <Button size="sm" onClick={() => dispatch({ type: 'file-add', files: [{ path: 'notes.txt', content: '' }] })}>
+                <FilePlus2 size={14} aria-hidden />
+                New file
+              </Button>
+              <Button size="sm" onClick={() => fileInput.current?.click()}>
+                <Upload size={14} aria-hidden />
+                Open from this device
               </Button>
             </div>
-          )}
-          {active ? (
-            <>
-              <div className="file-tabs" role="tablist" aria-label="Files" ref={tablist}>
-                {state.files.map((file, index) => {
-                  const count = perFile.get(file.path)?.length ?? 0;
-                  const selected = file === active;
-                  const slash = file.path.lastIndexOf('/');
-                  return (
-                    <button
-                      key={file.path}
-                      type="button"
-                      role="tab"
-                      id={`${panelId}-tab-${index}`}
-                      aria-selected={selected}
-                      aria-controls={panelId}
-                      tabIndex={selected ? 0 : -1}
-                      aria-label={count ? `${file.path}, ${count} ${count === 1 ? 'finding' : 'findings'}` : file.path}
-                      className="file-tab"
-                      onClick={() => dispatch({ type: 'file-select', path: file.path })}
-                      onKeyDown={(event) => onTabKey(event, index)}
-                    >
-                      {slash > 0 && <span className="file-tab-dir">{file.path.slice(0, slash + 1)}</span>}
-                      <span className="file-tab-name">{file.path.slice(slash + 1)}</span>
-                      {count > 0 && (
-                        <span className="file-tab-count" aria-hidden>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div
-                className="file-pane"
-                role="tabpanel"
-                id={panelId}
-                aria-labelledby={`${panelId}-tab-${state.files.indexOf(active)}`}
-              >
-                <div className="file-toolbar">
-                  <label className="sr-only" htmlFor={pathId}>
-                    Path of the selected file
-                  </label>
-                  <input
-                    id={pathId}
-                    className={cx('input', 'mono', 'path-input', problem && 'is-invalid')}
-                    value={draftPath}
-                    spellCheck={false}
-                    autoComplete="off"
-                    aria-invalid={Boolean(problem)}
-                    aria-describedby={problem ? `${pathId}-error` : `${pathId}-hint`}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (pathProblem(next, otherPaths)) {
-                        setInvalidPath({ file: active.path, text: next });
-                      } else {
-                        setInvalidPath(null);
-                        dispatch({ type: 'file-rename', path: active.path, to: next });
-                      }
-                    }}
-                  />
-                  <IconButton label={`Remove ${active.path} from the change`} onClick={() => dispatch({ type: 'file-remove', path: active.path })}>
-                    <Trash2 size={15} aria-hidden />
-                  </IconButton>
-                </div>
-                {problem ? (
-                  <p className="field-error" id={`${pathId}-error`}>
-                    {problem}
-                  </p>
-                ) : (
-                  <p className="sr-only" id={`${pathId}-hint`}>
-                    Renaming a file changes which filename rules apply, for example .env.
-                  </p>
-                )}
-                <CodeEditor
-                  ref={editor}
-                  docKey={active.path}
-                  value={active.content}
-                  label={`Contents of ${active.path}`}
-                  onChange={(content) => dispatch({ type: 'file-edit', path: active.path, content })}
-                  onCursor={setCursor}
-                />
-                <div className="status-bar">
-                  <span>
-                    Ln {cursor.line}, Col {cursor.column}
-                  </span>
-                  <span>
-                    {cursor.lines} {cursor.lines === 1 ? 'line' : 'lines'}
-                  </span>
-                  <span className="status-local">
-                    <LockKeyhole size={12} aria-hidden />
-                    Scanned in this browser
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="empty">
-              <p>No files in the change.</p>
-              <div className="empty-actions">
-                <Button size="sm" onClick={() => dispatch({ type: 'file-add', files: [{ path: 'notes.txt', content: '' }] })}>
-                  <FilePlus2 size={14} aria-hidden />
-                  New file
-                </Button>
-                <Button size="sm" onClick={() => fileInput.current?.click()}>
-                  <Upload size={14} aria-hidden />
-                  Open from this device
-                </Button>
-              </div>
-            </div>
-          )}
-          <p className="files-notice" role="status">
-            {notice}
-          </p>
-          {dragging && (
-            <div className="drop-overlay" aria-hidden>
-              <Upload size={20} />
-              Drop files to add them. They stay in this browser.
-            </div>
-          )}
-        </div>
-      </Panel>
+          </div>
+        )}
+        <p className="files-notice" role="status">
+          {notice}
+        </p>
 
-      <Panel
-        title="Scan results"
-        icon={<KeyRound size={16} aria-hidden />}
-        actions={
-          <span className="panel-meta">
-            {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
-            {skipped.length ? `, ${skipped.length} skipped` : ''}
-          </span>
-        }
-      >
-        {findings.length || skipped.length ? (
-          <ul className="findings" aria-label="Findings and skipped placeholders">
-            {findings.map((finding) => {
-              const effect = EFFECT[findingEffect(state, finding)];
-              const where = finding.line ? `${finding.path}:${finding.line}` : finding.path;
-              return (
-                <li key={`${finding.path}:${finding.ruleId}`} className="finding">
-                  <span className={cx('dot', `dot-${finding.confidence}`)} aria-hidden />
+        <div className="scan" id="scan-results" ref={results} tabIndex={-1} data-cause={findingsCause} aria-labelledby={`${panelId}-scan`}>
+          <div className="scan-head">
+            <h3 className="scan-title" id={`${panelId}-scan`}>
+              Scan results
+            </h3>
+            <span className="section-meta">
+              {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
+              {skipped.length ? `, ${skipped.length} placeholder${skipped.length === 1 ? '' : 's'} skipped` : ''}
+            </span>
+          </div>
+          {findings.length || skipped.length ? (
+            <ul className="findings" aria-label="Findings and skipped placeholders">
+              {findings.map((finding) => {
+                const effect = EFFECT[findingEffect(state, finding)];
+                const where = finding.line ? `${finding.path}:${finding.line}` : finding.path;
+                return (
+                  <li key={`${finding.path}:${finding.ruleId}`} className="finding">
+                    <span className={cx('dot', `dot-${finding.confidence}`)} aria-hidden />
+                    <div className="finding-main">
+                      <span className="finding-rule">
+                        <span className="mono">{finding.ruleId}</span>
+                        <span className="muted">{finding.confidence} confidence</span>
+                      </span>
+                      <span className="finding-where">
+                        {finding.path === '--message' ? (
+                          <span className="mono">-m message</span>
+                        ) : (
+                          <button type="button" className="link-btn mono" onClick={() => reveal(finding.path, finding.line)} aria-label={`Show ${where} in the editor`}>
+                            {where}
+                          </button>
+                        )}
+                        {finding.ruleId === 'dotenv-file' ? <span className="muted">filename rule</span> : <span className="mono excerpt">{finding.excerpt}</span>}
+                      </span>
+                    </div>
+                    <span className={cx('chip', `tone-${effect.tone}`)} title={effect.hint}>
+                      {effect.label}
+                    </span>
+                  </li>
+                );
+              })}
+              {skipped.map((value) => (
+                <li key={`${value.path}:${value.line}:${value.ruleId}:${value.value}`} className="finding is-skipped">
+                  <span className="dot dot-skipped" aria-hidden />
                   <div className="finding-main">
                     <span className="finding-rule">
-                      <span className="mono">{finding.ruleId}</span>
-                      <span className="muted">{finding.confidence} confidence</span>
+                      <span className="mono">{value.ruleId}</span>
+                      <span className="muted">placeholder, not reported</span>
                     </span>
                     <span className="finding-where">
-                      {finding.path === '--message' ? (
-                        <span className="mono">-m message</span>
-                      ) : (
-                        <button type="button" className="link-btn mono" onClick={() => reveal(finding.path, finding.line)} aria-label={`Show ${where} in the editor`}>
-                          {where}
-                        </button>
-                      )}
-                      {finding.ruleId !== 'dotenv-file' && <span className="mono excerpt">{finding.excerpt}</span>}
-                      {finding.ruleId === 'dotenv-file' && <span className="muted">filename rule</span>}
+                      <button type="button" className="link-btn mono" onClick={() => reveal(value.path, value.line)} aria-label={`Show ${value.path}:${value.line} in the editor`}>
+                        {value.path}:{value.line}
+                      </button>
+                      <span className="mono excerpt">{value.value.length > 32 ? `${value.value.slice(0, 31)}…` : value.value}</span>
                     </span>
                   </div>
-                  <span className={cx('chip', `tone-${effect.tone}`)} title={effect.hint}>
-                    {effect.label}
+                  <span className="chip tone-noop" title="Plainly a placeholder, so the scanner does not report it.">
+                    Skipped
                   </span>
                 </li>
-              );
-            })}
-            {skipped.map((value) => (
-              <li key={`${value.path}:${value.line}:${value.ruleId}:${value.value}`} className="finding is-skipped">
-                <span className="dot dot-skipped" aria-hidden />
-                <div className="finding-main">
-                  <span className="finding-rule">
-                    <span className="mono">{value.ruleId}</span>
-                    <span className="muted">placeholder, not reported</span>
-                  </span>
-                  <span className="finding-where">
-                    <button type="button" className="link-btn mono" onClick={() => reveal(value.path, value.line)} aria-label={`Show ${value.path}:${value.line} in the editor`}>
-                      {value.path}:{value.line}
-                    </button>
-                    <span className="mono excerpt">{value.value.length > 32 ? `${value.value.slice(0, 31)}…` : value.value}</span>
-                  </span>
-                </div>
-                <span className="chip tone-noop" title="Plainly a placeholder, so the scanner does not report it.">
-                  Skipped
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty-line">
-            {state.hasChanges && state.files.length ? 'No credential-shaped values in the staged files.' : 'Nothing to scan.'}
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-line">{state.hasChanges && state.files.length ? 'No credential-shaped values in the staged files.' : 'Nothing to scan.'}</p>
+          )}
+          <p className="scan-foot">
+            Pattern matching only: a credential without a rule, such as <code>password = &quot;hunter2&quot;</code>, is not found. Each rule
+            reports its first match per file.
           </p>
+        </div>
+
+        {dragging && (
+          <div className="drop-overlay" aria-hidden>
+            <Upload size={20} />
+            Drop files to add them. They stay in this browser.
+          </div>
         )}
-        <p className="panel-foot">
-          Pattern matching only: a credential without a rule, such as <code>password = &quot;hunter2&quot;</code>, is not found.
-          {fileFindings.length > 0 && ' Each rule reports its first match per file.'}
-        </p>
-      </Panel>
-    </>
+      </div>
+    </Section>
   );
 }

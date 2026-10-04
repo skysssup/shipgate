@@ -2,37 +2,45 @@
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-md: 0.875rem;
   --text-lg: 1rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.625rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
 
-  --radius-sm: 4px;
-  --radius: 6px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
   --radius-lg: 10px;
+  --radius-xl: 12px;
   --topbar-height: 3.25rem;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration: 140ms;
 
   color-scheme: light;
-  --bg: #f5f6f8;
+  --canvas: #eef0f3;
   --surface: #ffffff;
-  --surface-2: #f1f3f5;
-  --surface-3: #e7eaee;
+  --surface-2: #f7f8fa;
+  --surface-3: #eff1f4;
+  --code-bg: #f6f7f9;
   --overlay: #ffffff;
-  --border: #e1e4e8;
-  --border-strong: #cdd2d9;
-  --text: #16181d;
-  --text-2: #4b5260;
-  --text-3: #646b78;
+  --border: #e2e5ea;
+  --border-strong: #ccd2da;
+  --text: #111318;
+  --text-2: #454c58;
+  --text-3: #5d6572;
   --accent: #2b55d9;
-  --accent-soft: #e8eeff;
-  --accent-border: #bccbfa;
+  --accent-text: #2449c4;
+  --accent-soft: #eaf0ff;
+  --accent-border: #c2d0fb;
   --on-accent: #ffffff;
   --focus: #2b55d9;
+  --string: #11653f;
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow-md: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -6px rgb(16 24 40 / 0.14);
+  --shadow-frame: 0 1px 2px rgb(16 24 40 / 0.05), 0 4px 16px -4px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 1px 2px rgb(16 24 40 / 0.06), 0 10px 28px -8px rgb(16 24 40 / 0.18);
 
   --ship: #11753f;
   --ship-soft: #e4f4ea;
@@ -45,19 +53,19 @@
   --block-border: #f2bdbd;
   --noop: #535b67;
   --noop-soft: #eef0f3;
-  --noop-border: #d6dae0;
+  --noop-border: #d3d8df;
+  --on-tone: #ffffff;
 
-  --secret-high: rgb(220 38 38 / 0.16);
+  --secret-high: rgb(220 38 38 / 0.14);
   --secret-high-line: #dc2626;
-  --secret-medium: rgb(217 119 6 / 0.18);
+  --secret-medium: rgb(217 119 6 / 0.16);
   --secret-medium-line: #d97706;
-  --secret-placeholder: rgb(100 107 120 / 0.14);
+  --secret-placeholder: rgb(93 101 114 / 0.12);
 
-  --term-bg: #0e1013;
-  --term-bar: #16191e;
-  --term-border: #23272e;
-  --term-text: #d9dde3;
-  --term-dim: #8a919c;
+  --term-bg: #0f1114;
+  --term-border: #1f2329;
+  --term-text: #dadee4;
+  --term-dim: #8a929d;
   --term-green: #4fd18d;
   --term-red: #ff7b7b;
   --term-amber: #f2b04f;
@@ -66,23 +74,27 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0b0c0f;
-  --surface: #121418;
-  --surface-2: #1a1d22;
-  --surface-3: #23272d;
-  --overlay: #181b20;
-  --border: #252930;
-  --border-strong: #343a43;
-  --text: #e7e9ed;
-  --text-2: #aeb5bf;
-  --text-3: #8b929d;
+  --canvas: #08090b;
+  --surface: #111316;
+  --surface-2: #16191d;
+  --surface-3: #1d2126;
+  --code-bg: #0c0e10;
+  --overlay: #171a1e;
+  --border: #24282f;
+  --border-strong: #333a43;
+  --text: #e9ebef;
+  --text-2: #aab1bb;
+  --text-3: #8a929d;
   --accent: #7b98ff;
+  --accent-text: #93abff;
   --accent-soft: #1a2340;
   --accent-border: #33447a;
   --on-accent: #0b0c0f;
   --focus: #7b98ff;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.5), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  --string: #6fd3a6;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45);
+  --shadow-frame: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.5), 0 14px 36px -10px rgb(0 0 0 / 0.7);
 
   --ship: #45d08a;
   --ship-soft: #0f2619;
@@ -95,15 +107,15 @@
   --block-border: #5c2526;
   --noop: #a3abb6;
   --noop-soft: #1d2025;
-  --noop-border: #343a43;
+  --noop-border: #363c45;
+  --on-tone: #0b0c0f;
 
-  --secret-high: rgb(255 92 92 / 0.22);
+  --secret-high: rgb(255 92 92 / 0.2);
   --secret-high-line: #ff7a7a;
-  --secret-medium: rgb(242 173 69 / 0.2);
+  --secret-medium: rgb(242 173 69 / 0.18);
   --secret-medium-line: #f2ad45;
-  --secret-placeholder: rgb(163 171 182 / 0.16);
+  --secret-placeholder: rgb(163 171 182 / 0.14);
 
   --term-bg: #0a0b0d;
-  --term-bar: #121418;
-  --term-border: #23272d;
+  --term-border: #22262c;
 }

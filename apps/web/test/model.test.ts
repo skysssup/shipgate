@@ -10,6 +10,7 @@ import {
   simulateShip,
 } from '@shipgate/core/browser';
 import {
+  causes,
   cliCommands,
   compareLevels,
   DEFAULT_SCENARIO_ID,
@@ -19,6 +20,7 @@ import {
   pathProblem,
   placeFor,
   PLACEHOLDER_EXAMPLES,
+  reasonTargets,
   skippedPlaceholders,
   stateFromScenario,
   suggestions,
@@ -123,6 +125,34 @@ describe('what would change the decision', () => {
   it('opts in a repository that is not enabled', () => {
     const [first] = suggestions(stateFromScenario('not-enabled'));
     expect(first).toMatchObject({ id: 'enable', result: { action: 'ship' } });
+  });
+});
+
+describe('inputs behind the decision', () => {
+  const result = (id: string, patch: Partial<SimState> = {}) => evaluate({ ...stateFromScenario(id), ...patch }).result;
+
+  it.each<[string, string, Partial<SimState>, ReturnType<typeof causes>, string[]]>([
+    ['credentials', 'credential-in-env', {}, { findings: 'stop' }, ['findings']],
+    ['public destination', 'public-repo', {}, { origin: 'stop' }, ['origin']],
+    ['credentials and destination', 'credential-in-env', { level: 'strict', remote: 'public' }, { findings: 'stop', origin: 'stop' }, ['findings', 'origin']],
+    ['busy agents', 'busy-agent', {}, { agents: 'stop' }, ['agents']],
+    ['opt-in', 'not-enabled', {}, { 'opt-in': 'stop' }, ['opt-in']],
+    ['clean tree', 'clean-change', { hasChanges: false }, { tree: 'stop' }, []],
+    ['review hold', 'review-hold', {}, { reviewer: 'stop' }, ['reviewer']],
+    ['yolo warning', 'medium-jwt', { level: 'yolo' }, { findings: 'warn' }, []],
+    ['public warning', 'clean-change', { remote: 'public' }, { origin: 'warn' }, []],
+    ['skipped review', 'review-hold', { messageOn: true }, { reviewer: 'warn' }, []],
+    ['nothing to point at', 'clean-change', {}, {}, []],
+  ])('%s', (_name, id, patch, expectedCauses, targets) => {
+    expect(causes(result(id, patch))).toEqual(expectedCauses);
+    expect(reasonTargets(result(id, patch))).toEqual(targets);
+  });
+
+  it('pairs every reason with an input', () => {
+    for (const scenario of DEMO_SCENARIOS) {
+      const r = evaluate(stateFromScenario(scenario.id)).result;
+      expect(reasonTargets(r)).toHaveLength(r.reasons.length);
+    }
   });
 });
 
