@@ -9,3 +9,6 @@ coverage/
 apps/web/dist/
 *.log
 .shipgate.json
+release/
+test-results/
+playwright-report/
