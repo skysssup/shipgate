@@ -8,7 +8,7 @@ import { writeRepoConfig } from '../src/config.js';
 import { createGit } from '../src/git.js';
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })));
 
 describe('staged index preservation', () => {
   it.each(['secret', 'review', 'commit'] as const)('restores partial staging on %s block/hold', async (reason) => {

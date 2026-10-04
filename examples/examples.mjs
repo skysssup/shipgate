@@ -179,7 +179,7 @@ export function runExample(example) {
     chmodSync(join(bin, 'shipgate'), 0o755);
     chmodSync(join(bin, 'gh'), 0o755);
     const gitconfig = join(work, 'gitconfig');
-    writeFileSync(gitconfig, '[user]\n\tname = Example\n\temail = example@example.invalid\n[init]\n\tdefaultBranch = main\n[advice]\n\tdetachedHead = false\n');
+    writeFileSync(gitconfig, '[user]\n\tname = Example\n\temail = example@example.invalid\n[init]\n\tdefaultBranch = main\n[advice]\n\tdetachedHead = false\n[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n');
     const lines = [...(example.prelude === false ? [] : PRELUDE.split('\n')), ...example.script.split('\n')];
     const script = ['set -u', ...lines.map((line, i) => line.startsWith('$ ')
       ? `printf '\\n@@shown %s\\n' ${i}; { ${line.slice(2)}; } 2>&1; printf '\\n@@exit %s\\n' $?`
@@ -214,7 +214,7 @@ export function runExample(example) {
     }
     return shown;
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 

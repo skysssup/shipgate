@@ -9,7 +9,7 @@ import { createGit } from '../src/git.js';
 import { loadRepoConfig, writeRepoConfig } from '../src/config.js';
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })));
 function repository(agentReview = false) {
   const dir = mkdtempSync(join(tmpdir(), 'shipgate-transaction-'));
   dirs.push(dir);

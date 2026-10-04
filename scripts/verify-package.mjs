@@ -122,5 +122,5 @@ try {
   });
   console.log(results.join('\n'));
 } finally {
-  rmSync(work, { recursive: true, force: true });
+  rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

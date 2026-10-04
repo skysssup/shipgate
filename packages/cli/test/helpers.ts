@@ -9,7 +9,7 @@ import { writeRepoConfig } from '../src/config.js';
 
 const created: string[] = [];
 afterEach(() => {
-  for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** A new directory removed after the test. Resolved through symlinks (macOS /var). */
