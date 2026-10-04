@@ -3,10 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Shipgate policy simulator: see whether shipgate ship would commit, hold, or block a change, and why. Runs locally on sample inputs." />
-    <meta name="color-scheme" content="dark light" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2316181d'/%3E%3Cpath d='M4 8.5l2.5 2.5L12 5' stroke='%234ccf7a' stroke-width='2' fill='none'/%3E%3C/svg%3E" />
+    <meta name="description" content="Shipgate policy simulator: see whether shipgate ship would commit, hold, or block a change, and why. Runs in the browser on sample or pasted files." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232b55d9'/%3E%3Cpath d='M7 5.5v13M17 5.5v13M7 9h10' stroke='%23fff' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3Cpath d='M9.6 13.6l1.9 1.9 3.2-3.6' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E" />
     <title>Shipgate policy simulator</title>
+    <script>
+      (function () {
+        var stored;
+        try {
+          stored = localStorage.getItem('shipgate-theme');
+        } catch (error) {}
+        var dark = stored === 'dark' || (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

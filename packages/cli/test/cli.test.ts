@@ -187,6 +187,10 @@ describe('demo', () => {
       expect(asset).toBeTruthy();
       const js = await fetch(new URL(asset!, url));
       expect(js.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
+      const css = await (await fetch(new URL(/href="\.?\/?(assets\/[^"]+\.css)"/.exec(html)![1], url))).text();
+      const font = /url\(\.?\/?([^)]+\.woff2)\)/.exec(css)?.[1];
+      expect(font).toBeTruthy();
+      expect((await fetch(new URL(`assets/${font!.replace(/^assets\//, '')}`, url))).headers.get('content-type')).toBe('font/woff2');
       expect((await fetch(new URL('assets/missing.js', url))).status).toBe(404);
       expect((await fetch(new URL('/%2e%2e/package.json', url))).status).not.toBe(200);
     } finally {

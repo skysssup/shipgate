@@ -13,6 +13,9 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 /** The simulator ships inside the CLI package (`web/`); a source checkout uses apps/web/dist. */

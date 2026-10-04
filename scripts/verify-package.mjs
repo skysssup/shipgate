@@ -111,7 +111,9 @@ try {
         const asset = /src="\.\/(assets\/[^"]+\.js)"/.exec(html)?.[1];
         assert(asset, 'index.html has no relative script');
         assert((await fetch(new URL(asset, url))).status === 200, 'script did not load');
-        results.push('ok  demo --serve serves the bundled simulator and its assets');
+        const licenses = await fetch(new URL('third-party-licenses.txt', url));
+        assert(licenses.status === 200 && (await licenses.text()).includes('@fontsource/ibm-plex-sans@'), 'third-party licenses are missing');
+        results.push('ok  demo --serve serves the bundled simulator, its assets, and third-party licenses');
         done();
       } catch (error) {
         fail(error);
