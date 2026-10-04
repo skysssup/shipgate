@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.2.0 — 2026-10-04
+
+### Changed
+
+- The simulator's inputs are now the commands themselves: `shipgate on --level …` and
+  `shipgate ship`, with flags you click to switch, and a strip of repository facts (opt-in, origin,
+  other agents, working tree, and the reviewer's answer). They replace the settings forms.
+- The decision panel links each reason to the input behind it and highlights that input. It shows
+  the changes that would change the outcome, the checks in order (with unreached steps grouped),
+  and the decision at each level on one scrolling panel instead of tabs.
+- Scan results sit with the editor, and the CLI output sits under it.
+- On desktop the simulator is an app-style frame whose columns scroll on their own; below 1024 px
+  it is one column with the decision and suggested changes first.
+
+### Added
+
+- Undo for changes that replace the inputs: loading another example over edits, resetting,
+  applying a suggested change, or switching level from the comparison.
+- A help popover that explains every flag and repository fact.
+
 ## 2.1.0 — 2026-10-04
 
 ### Added

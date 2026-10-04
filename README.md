@@ -28,7 +28,7 @@ Shipgate is not published to the npm registry. Install the CLI tarball from a
 and the simulator, so it needs no other downloads:
 
 ```sh
-npm install --global https://github.com/skysssup/shipgate/releases/download/v2.1.0/shipgate-cli-2.1.0.tgz
+npm install --global https://github.com/skysssup/shipgate/releases/download/v2.2.0/shipgate-cli-2.2.0.tgz
 shipgate --version
 ```
 
@@ -39,8 +39,8 @@ git clone https://github.com/skysssup/shipgate
 cd shipgate
 npm ci
 npm run build
-npm run pack:release          # writes release/shipgate-cli-2.1.0.tgz and friends
-npm install --global ./release/shipgate-cli-2.1.0.tgz
+npm run pack:release          # writes release/shipgate-cli-2.2.0.tgz and friends
+npm install --global ./release/shipgate-cli-2.2.0.tgz
 ```
 
 ## Quick start
@@ -306,14 +306,16 @@ requests; opened files stay in the page.
 
 ![The policy simulator blocking a change that adds an API key in a .env file](docs/simulator.png)
 
-- Choose an example, the policy level, the repository facts (opt-in, origin, busy agents, external
-  review), and the `ship` flags.
-- Edit the staged files. The scanner runs on every change, highlights credential-shaped values,
-  and lists what each finding does at the current level, including placeholders it skipped.
-- **Checks** shows each check `ship` applies, in order, with its result. **What-if** lists single
-  changes that change the decision and applies one with a click. **Levels** compares strict,
-  balanced, and yolo. **Terminal** shows the report `shipgate ship` would print, produced by the
-  CLI's own formatter, and the commands that reproduce the setup.
+- **Run setup** shows the `shipgate on` and `shipgate ship` commands for the current inputs. Pick
+  the level and click a flag to switch it, then set the repository facts: opt-in, origin, other
+  agents, working tree, and the reviewer's answer.
+- **Staged changes** is an editor. The scanner runs on every change, highlights credential-shaped
+  values, and lists each finding with what it does at the current level, including placeholders it
+  skipped.
+- The **decision** panel explains the result and links each reason to the input behind it, which
+  is highlighted. It lists single changes that would change the outcome (one click applies a
+  change, and Undo reverts it), every check `ship` applies, and the decision at each level.
+- **CLI output** shows the report `shipgate ship` would print, produced by the CLI's own formatter.
 - **Share** copies a link that keeps the example and settings, not file contents. The **Rules**
   view lists every scanner rule and what each level does with it.
 

@@ -1,6 +1,6 @@
 {
   "name": "@shipgate/cli",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "shipgate command: stage all changes, scan them for credentials, apply a local policy, then commit and push.",
   "keywords": [
     "git",
@@ -42,7 +42,7 @@
     "directory": "packages/cli"
   },
   "dependencies": {
-    "@shipgate/core": "2.1.0"
+    "@shipgate/core": "2.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
