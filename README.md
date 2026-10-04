@@ -28,7 +28,7 @@ Shipgate is not published to the npm registry. Install the CLI tarball from a
 and the simulator, so it needs no other downloads:
 
 ```sh
-npm install --global https://github.com/skysssup/shipgate/releases/download/v2.0.0/shipgate-cli-2.0.0.tgz
+npm install --global https://github.com/skysssup/shipgate/releases/download/v2.1.0/shipgate-cli-2.1.0.tgz
 shipgate --version
 ```
 
@@ -39,8 +39,8 @@ git clone https://github.com/skysssup/shipgate
 cd shipgate
 npm ci
 npm run build
-npm run pack:release          # writes release/shipgate-cli-2.0.0.tgz and friends
-npm install --global ./release/shipgate-cli-2.0.0.tgz
+npm run pack:release          # writes release/shipgate-cli-2.1.0.tgz and friends
+npm install --global ./release/shipgate-cli-2.1.0.tgz
 ```
 
 ## Quick start
@@ -300,11 +300,26 @@ deleted `.env` file is not a finding, so removing one can ship.
 
 ## Policy simulator
 
-The simulator runs the same decision code as the CLI on built-in examples, in the browser. It does
-not read, stage, commit, or push anything. Open it with `shipgate demo --serve`, or from a source
-checkout with `npm run dev:web`. Releases also include the static build
-(`shipgate-simulator-<version>.tar.gz`), which works from any path on a static web server. There is
-no hosted copy.
+The simulator runs the CLI's decision code in the browser, on built-in examples or on files you
+type, paste, or open. It does not read, stage, commit, or push anything and makes no network
+requests; opened files stay in the page.
+
+![The policy simulator blocking a change that adds an API key in a .env file](docs/simulator.png)
+
+- Choose an example, the policy level, the repository facts (opt-in, origin, busy agents, external
+  review), and the `ship` flags.
+- Edit the staged files. The scanner runs on every change, highlights credential-shaped values,
+  and lists what each finding does at the current level, including placeholders it skipped.
+- **Checks** shows each check `ship` applies, in order, with its result. **What-if** lists single
+  changes that change the decision and applies one with a click. **Levels** compares strict,
+  balanced, and yolo. **Terminal** shows the report `shipgate ship` would print, produced by the
+  CLI's own formatter, and the commands that reproduce the setup.
+- **Share** copies a link that keeps the example and settings, not file contents. The **Rules**
+  view lists every scanner rule and what each level does with it.
+
+Open it with `shipgate demo --serve`, or from a source checkout with `npm run dev:web`. Releases
+also include the static build (`shipgate-simulator-<version>.tar.gz`), which works from any path on
+a static web server. There is no hosted copy.
 
 ## Troubleshooting
 

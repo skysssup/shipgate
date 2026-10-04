@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.1.0 — 2026-10-04
+
+### Added
+
+- Policy simulator rebuilt as a workspace: an examples sidebar, a policy level picker, repository and
+  run settings with explanations, and a decision panel that stays in view. Light, dark, and system
+  themes. Works at 360 px and up, with the keyboard alone, and with screen readers.
+- Editable staged files: type, paste, rename, or open files from the device, or add a sample for any
+  scanner rule. The scanner runs in the page on every change, highlights credential-shaped values
+  in the editor, and lists each finding with what it does at the current level and flags. Skipped
+  placeholders are listed too.
+- **Checks**: every check `ship` applies, in order, with its result. **What-if**: single changes
+  that change the decision, applied with one click. **Levels**: the decision under strict,
+  balanced, and yolo. **Terminal**: the report `shipgate ship` prints for the inputs, its exit
+  status, and the commands that reproduce the setup.
+- Share links that keep the example and settings (file contents stay on the device), a Rules view
+  with each rule and what every level does, and a Get started view.
+- `@shipgate/core`: `RunPlanResult.gates` reports each check with a status and detail.
+  `simulateShip` and `formatShipResult` produce the CLI's ship report, `locateSecrets` returns the
+  position of every credential-shaped value, and `SECRET_RULES` and `RULE_SAMPLES` describe the
+  rules with a synthetic sample for each.
+
+### Changed
+
+- The CLI prints its ship report through `@shipgate/core`, so the simulator shows the same text.
+  The output is unchanged; a test ships every example with the real CLI and compares the reports.
+- `shipgate demo --serve` serves fonts and text files with their MIME types.
+- The simulator bundles its fonts (IBM Plex Sans and Mono, SIL Open Font License) and lists the
+  licenses of everything it bundles in `third-party-licenses.txt`. It still makes no external
+  requests.
+
 ## 2.0.0 — 2026-10-04
 
 ### Fixed
