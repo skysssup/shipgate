@@ -6,12 +6,58 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
+  test:
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            node: 22
+            node: 22.12.0
+          - os: ubuntu-latest
+            node: 24
+          - os: macos-latest
+            node: 24
+          - os: windows-latest
+            node: 24
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  browser:
+    name: Simulator in Chromium and Firefox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium firefox
+        working-directory: apps/web
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+
+  package:
+    name: Package and install (${{ matrix.os }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 22.12.0
           - os: windows-latest
             node: 24
     runs-on: ${{ matrix.os }}
@@ -23,4 +69,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - if: runner.os != 'Windows'
+        run: npm run examples -- --check
+      - run: npm run pack:release
+      - run: npm run verify:package
+      - if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-tarballs
+          path: release/
