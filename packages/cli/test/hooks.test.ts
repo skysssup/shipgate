@@ -181,8 +181,7 @@ describe('ship --hook', () => {
     expect(cli(home, ['ship', '--hook', 'claude', '--json']).stderr).toMatch(/cannot be combined/);
   });
 
-  it('runs the installed Claude snippet with bash, with and without shipgate on PATH', () => {
-    if (isWindows) return;
+  it.skipIf(isWindows)('runs the installed Claude snippet with bash, with and without shipgate on PATH', () => {
     setupHooks();
     const bin = tempDir('shipgate-bin-');
     const shim = join(bin, 'shipgate');

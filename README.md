@@ -166,7 +166,7 @@ the rest.
 | --- | --- |
 | `shipgate on [--level strict\|balanced\|yolo] [--agent] [--public-ok] [--model ID] [--account LOGIN] [--key KEY]` | Enable Shipgate in this repository. `--account` is shown by `status` only; it does not select credentials. Prefer `OPENROUTER_API_KEY` over `--key`, which ends up in shell history. |
 | `shipgate off` | Disable it here; settings are kept. |
-| `shipgate ship [-m TEXT] [--prompt TEXT] [--force-secrets] [--public-ok] [--confirm] [--json]` | Stage, scan, decide, commit, and push, as described above. |
+| `shipgate ship [-m TEXT] [--prompt TEXT] [--force-secrets] [--public-ok] [--confirm] [--json]` | Stage, scan, decide, commit, and push, as described above. `--hook claude\|cursor` is for the installed agent hooks. |
 | `shipgate undo [--json]` | Remove the last Shipgate commit; see [Undo](#undo). |
 | `shipgate status [--json]` | Show the configuration (or why it is invalid), destination, busy markers, lock, and hooks. |
 | `shipgate setup` | Install the Claude Code and Cursor stop hooks; see [Agent hooks](#agent-hooks). |

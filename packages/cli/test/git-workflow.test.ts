@@ -5,8 +5,6 @@ import { formatShipResult, runShip } from '../src/commands/ship.js';
 import { runUndo } from '../src/commands/undo.js';
 import { addOrigin, git, pushFromOtherClone, remoteHead, repo, tempDir, type Repo } from './helpers.js';
 
-const isWindows = process.platform === 'win32';
-
 function rejectAllPushes(bare: string, message: string): void {
   const hook = join(bare, 'hooks', 'pre-receive');
   writeFileSync(hook, `#!/bin/sh\necho "${message}" >&2\nexit 1\n`);
@@ -75,7 +73,6 @@ describe('push and retry', () => {
   });
 
   it('reports a rejected push without rebasing when origin has nothing new', async () => {
-    if (isWindows) return;
     const r = repo();
     const bare = addOrigin(r);
     const before = remoteHead(bare);
@@ -155,7 +152,6 @@ describe('undo', () => {
   });
 
   it('undoes only locally when the push had failed', async () => {
-    if (isWindows) return;
     const r = repo();
     const bare = addOrigin(r);
     const parent = r.head();

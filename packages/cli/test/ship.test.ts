@@ -63,8 +63,7 @@ describe('what ship stages and scans', () => {
     for (const name of names) expect(committed).toContain(`odd/${name}`);
   });
 
-  it('finds a credential in a file whose name contains a newline', async () => {
-    if (isWindows) return;
+  it.skipIf(isWindows)('finds a credential in a file whose name contains a newline', async () => {
     const r = repo();
     r.write('line\nbreak.env.txt', `token=${SYNTHETIC.github}\n`);
     const before = snapshot(r);
@@ -74,13 +73,14 @@ describe('what ship stages and scans', () => {
     expect(snapshot(r)).toEqual(before);
   });
 
-  it('scans binary files and symlink targets as staged bytes', async () => {
+  it('scans binary files as staged bytes', async () => {
     const r = repo();
     r.write('image.bin', Buffer.concat([Buffer.from([0, 1, 2, 255]), Buffer.from(SYNTHETIC.github), Buffer.from([0])]));
     const binary = await runShip({ cwd: r.dir, message: 'binary' });
     expect(binary.findings).toEqual([expect.objectContaining({ path: 'image.bin', ruleId: 'github-token' })]);
+  });
 
-    if (isWindows) return;
+  it.skipIf(isWindows)('scans symlink targets as staged bytes', async () => {
     const s = repo();
     symlinkSync(SYNTHETIC.openai, join(s.dir, 'link'));
     const link = await runShip({ cwd: s.dir, message: 'symlink' });
@@ -259,7 +259,6 @@ describe('policy decisions in a real repository', () => {
 
 describe('commit hooks and commit failures', () => {
   it('reports a rejecting pre-commit hook and restores the staging area', async () => {
-    if (isWindows) return;
     const r = repo();
     hook(r, 'pre-commit', 'echo "lint failed: missing semicolon" >&2\nexit 1');
     r.write('README.md', 'partially staged\n');
@@ -275,7 +274,6 @@ describe('commit hooks and commit failures', () => {
   });
 
   it('rescans a commit changed by a hook and keeps a blocked result local', async () => {
-    if (isWindows) return;
     const r = repo();
     const bare = addOrigin(r);
     hook(r, 'pre-commit', `printf 'TOKEN=%s\\n' '${SYNTHETIC.github}' > injected.txt\ngit add injected.txt`);
@@ -290,7 +288,6 @@ describe('commit hooks and commit failures', () => {
   });
 
   it('pushes when a hook only reformats files, noting the rescan', async () => {
-    if (isWindows) return;
     const r = repo();
     const bare = addOrigin(r);
     hook(r, 'pre-commit', 'printf "formatted\\n" > a.txt\ngit add a.txt');
