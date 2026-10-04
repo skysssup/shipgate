@@ -6,7 +6,7 @@
     "git",
     "cli",
     "secrets",
-    "pre-commit",
+    "credential-scanning",
     "coding-agents",
     "claude-code",
     "cursor"
