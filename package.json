@@ -1,6 +1,6 @@
 {
   "name": "shipgate",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
   "description": "CLI that stages, scans, commits, and pushes coding-agent changes under a local policy, plus a browser policy simulator.",
   "workspaces": [
