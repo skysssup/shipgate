@@ -1,39 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { flagBool, flagString, parseArgs } from '../src/parse-args.js';
+import { flagBool, flagString, parseArgs, UsageError } from '../src/parse-args.js';
+
+const parse = (...args: string[]) => parseArgs(['node', 'shipgate', ...args]);
 
 describe('parseArgs', () => {
-  it('parses command and flags', () => {
-    const p = parseArgs(['node', 'shipgate', 'on', '--level', 'strict', '--agent']);
-    expect(p.command).toBe('on');
+  it('parses a command with value and boolean flags', () => {
+    const p = parse('on', '--level', 'strict', '--agent');
+    expect(p).toEqual({ command: 'on', flags: { level: 'strict', agent: true } });
     expect(flagString(p.flags, 'level')).toBe('strict');
     expect(flagBool(p.flags, 'agent')).toBe(true);
+    expect(flagBool(p.flags, 'public-ok')).toBeUndefined();
   });
 
-  it('parses --version', () => {
-    const p = parseArgs(['node', 'shipgate', '--version']);
-    expect(p.command).toBe('--version');
+  it('accepts --flag=value and the -m alias, and takes values that start with a dash', () => {
+    expect(parse('on', '--level=yolo').flags).toEqual({ level: 'yolo' });
+    expect(parse('ship', '-m', 'hello world').flags).toEqual({ message: 'hello world' });
+    expect(parse('ship', '-m', '-fix the dash').flags).toEqual({ message: '-fix the dash' });
+    expect(parse('ship', '--message', '--help').flags).toEqual({ message: '--help' });
   });
 
-  it('parses -m message', () => {
-    const p = parseArgs(['node', 'shipgate', 'ship', '-m', 'hello world']);
-    expect(p.command).toBe('ship');
-    expect(flagString(p.flags, 'm')).toBe('hello world');
+  it('reads explicit boolean values in both forms', () => {
+    expect(parse('ship', '--force-secrets=false', '--confirm=0').flags).toEqual({ 'force-secrets': false, confirm: false });
+    expect(parse('on', '--agent', 'false', '--public-ok', '1').flags).toEqual({ agent: false, 'public-ok': true });
+    expect(() => parse('ship', '--confirm=maybe')).toThrow(/--confirm expects true or false, not 'maybe'/);
   });
 
-  it('parses --key=value form', () => {
-    const p = parseArgs(['node', 'shipgate', 'on', '--level=yolo']);
-    expect(flagString(p.flags, 'level')).toBe('yolo');
+  it('handles help and version anywhere, and help with no command', () => {
+    expect(parse().command).toBe('help');
+    expect(parse('--help').command).toBe('help');
+    expect(parse('ship', '-h').command).toBe('help');
+    expect(parse('--version').command).toBe('version');
+    expect(parse('status', '-v').command).toBe('version');
   });
-});
 
-
-it('does not enable secret overrides when explicitly false', () => {
-  const { flags } = parseArgs(['node', 'shipgate', 'ship', '--force-secrets=false', '--confirm=0']);
-  expect(flagBool(flags, 'force-secrets')).toBe(false);
-  expect(flagBool(flags, 'confirm')).toBe(false);
-  expect(() => flagBool({ confirm: 'maybe' }, 'confirm')).toThrow();
-});
-it('rejects a missing safety level rather than choosing the default', () => {
-  const { flags } = parseArgs(['node', 'shipgate', 'on', '--level']);
-  expect(() => flagString(flags, 'level')).toThrow(/requires a value/);
+  it.each([
+    [['shp'], /unknown command 'shp'; did you mean 'ship'\?/],
+    [['--public-ok', 'ship'], /expected a command before --public-ok/],
+    [['on', '--levle', 'strict'], /unknown option --levle for 'on'; did you mean --level\?/],
+    [['on', '--level'], /--level requires a value/],
+    [['on', '--level='], /--level requires a value/],
+    [['ship', 'extra'], /unexpected argument 'extra' for 'ship'/],
+    [['ship', '--agent'], /unknown option --agent for 'ship'/],
+    [['off', '--level', 'strict'], /'off' takes no options/],
+    [['ship', '-x'], /unknown option -x for 'ship'/],
+    [['on', '--agent', 'strict'], /unexpected argument 'strict' for 'on'/],
+  ])('rejects %j', (args, message) => {
+    expect(() => parse(...args)).toThrow(UsageError);
+    expect(() => parse(...args)).toThrow(message);
+  });
 });

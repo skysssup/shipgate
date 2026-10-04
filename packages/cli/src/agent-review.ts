@@ -1,132 +1,103 @@
+import { redactSecretsInText, type ReviewOutcome } from '@shipgate/core';
+
 /**
- * Optional external model gate via OpenRouter (or OpenAI-compatible baseUrl).
- *
- * When agent review is enabled, this is fail-closed: missing key / HTTP error /
- * unparseable output holds the ship. A redacted staged diff is sent (not merely
- * filenames). Sending data off-machine is an explicit disclosure — enable only
- * with consent via `shipgate on --agent`.
+ * Optional external review through an OpenAI-compatible chat completions endpoint
+ * (OpenRouter by default). Enabled with `shipgate on --agent`. Every failure is
+ * reported as `unavailable`, which holds the ship (fail closed).
  */
 
-import { redactSecretsInText } from '@shipgate/core';
+const DEFAULT_REVIEW_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_REVIEW_BASE_URL = 'https://openrouter.ai/api/v1';
+export const REVIEW_DIFF_LIMIT = 12_000;
+const REVIEW_PROMPT_LIMIT = 2_000;
+const REVIEW_TIMEOUT_MS = 15_000;
 
-export interface ReviewInput {
+export interface ReviewRequest {
   apiKey?: string;
   model?: string;
   baseUrl?: string;
-  /** Filename list (always included for context). */
-  diffSummary: string;
-  /** Staged unified diff; secrets are redacted before send. */
-  redactedDiff?: string;
-  promptText?: string;
-  commitSubjects?: string[];
-  /** When true (default for enabled agent review), missing key / errors hold. */
-  requireKey?: boolean;
+  changedFiles: string[];
+  /** Staged diff. Files listed in `omittedFiles` must already be excluded from it. */
+  diff: string;
+  /** Paths whose content was withheld, such as flagged .env files. */
+  omittedFiles: string[];
+  prompt?: string;
+  timeoutMs?: number;
 }
 
-export interface ReviewResult {
-  decision: 'ship' | 'hold';
-  reason: string;
-  /** Historical name: true means the gate could not run (treated as hold when requireKey). */
-  failOpen: boolean;
+export interface ReviewResponse {
+  outcome: ReviewOutcome;
+  detail: string;
 }
 
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
-const TIMEOUT_MS = 15_000;
+const SYSTEM_PROMPT =
+  'You review a staged Git change before an automated commit and push. The diff has credential-shaped values ' +
+  'replaced with [REDACTED]. Reply with JSON only: {"decision":"ship"|"hold","reason":"<one sentence>"}. ' +
+  'Hold work in progress, leftover debug output, or half-finished changes. Otherwise ship.';
 
-export async function agentReview(input: ReviewInput): Promise<ReviewResult> {
-  const failClosed = input.requireKey !== false;
+/** Exactly what is sent to the endpoint, after redaction and truncation. */
+export function buildReviewMessages(req: ReviewRequest): Array<{ role: 'system' | 'user'; content: string }> {
+  const diff = redactSecretsInText(req.diff);
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        changedFiles: req.changedFiles.map(redactSecretsInText),
+        omittedFiles: req.omittedFiles,
+        prompt: req.prompt ? redactSecretsInText(req.prompt).slice(0, REVIEW_PROMPT_LIMIT) : null,
+        diff: diff.slice(0, REVIEW_DIFF_LIMIT),
+        diffTruncated: diff.length > REVIEW_DIFF_LIMIT,
+      }),
+    },
+  ];
+}
 
-  if (!input.apiKey) {
-    return {
-      decision: 'hold',
-      reason: 'no API key — agent review fail-closed',
-      failOpen: true,
-    };
-  }
+function oneLine(text: string, max = 300): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
 
-  const base = (input.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
-  const model = input.model || DEFAULT_MODEL;
-  const diff = redactSecretsInText(
-    input.redactedDiff || input.diffSummary || '',
-  ).slice(0, 12000);
-  const body = {
-    model,
-    temperature: 0,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You review agent coding turns before git push. You receive a redacted staged diff. Reply JSON only: {"decision":"ship"|"hold","reason":"..."}. Hold WIP, debug prints, half-done features. Ship otherwise.',
-      },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          disclosure:
-            'This payload is sent to an external model endpoint. Secrets are pattern-redacted but redaction is not guaranteed.',
-          prompt: input.promptText ? redactSecretsInText(input.promptText).slice(0, 2000) : null,
-          recentSubjects: input.commitSubjects?.slice(0, 5).map((subject) => redactSecretsInText(subject).slice(0, 500)) ?? [],
-          changedFiles: redactSecretsInText(input.diffSummary).slice(0, 2000),
-          redactedDiff: diff,
-        }),
-      },
-    ],
-  };
+export async function requestReview(req: ReviewRequest): Promise<ReviewResponse> {
+  const unavailable = (detail: string): ReviewResponse => ({ outcome: 'unavailable', detail });
+  if (!req.apiKey) return unavailable('no API key (set OPENROUTER_API_KEY or run shipgate on --key)');
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const base = (req.baseUrl || DEFAULT_REVIEW_BASE_URL).replace(/\/+$/, '');
+  const timeoutMs = req.timeoutMs ?? REVIEW_TIMEOUT_MS;
+  let res: Response;
   try {
-    const res = await fetch(`${base}/chat/completions`, {
+    res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${input.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${req.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: req.model || DEFAULT_REVIEW_MODEL, temperature: 0, messages: buildReviewMessages(req) }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) {
-      return {
-        decision: 'hold',
-        reason: `review HTTP ${res.status} — fail-closed`,
-        failOpen: true,
-      };
-    }
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const text = data.choices?.[0]?.message?.content ?? '';
-    const parsed = parseDecision(text);
-    if (!parsed) {
-      return {
-        decision: 'hold',
-        reason: 'unparseable review — fail-closed',
-        failOpen: true,
-      };
-    }
-    return { ...parsed, failOpen: false };
-  } catch (err) {
-    return {
-      decision: failClosed ? 'hold' : 'ship',
-      reason: `review error: ${(err as Error).message} — fail-closed`,
-      failOpen: true,
-    };
-  } finally {
-    clearTimeout(timer);
+  } catch (error) {
+    const name = (error as Error).name;
+    if (name === 'TimeoutError' || name === 'AbortError') return unavailable(`no response within ${timeoutMs / 1000} s`);
+    return unavailable(`request failed (${oneLine((error as Error).message, 120)})`);
   }
-}
+  if (!res.ok) return unavailable(`HTTP ${res.status} from ${new URL(base).host}`);
 
-function parseDecision(
-  text: string,
-): { decision: 'ship' | 'hold'; reason: string } | null {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
+  let data: unknown;
   try {
-    const obj = JSON.parse(match[0]) as { decision?: string; reason?: string };
-    if (obj && (obj.decision === 'ship' || obj.decision === 'hold')) {
-      return { decision: obj.decision, reason: typeof obj.reason === 'string' ? obj.reason : obj.decision };
-    }
+    data = JSON.parse(await res.text());
   } catch {
-    return null;
+    return unavailable('the response was not valid JSON');
   }
-  return null;
+  const content = (data as { choices?: Array<{ message?: { content?: unknown } }> })?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') return unavailable('the response had no message content');
+
+  const match = content.match(/\{[\s\S]*\}/);
+  let reply: { decision?: unknown; reason?: unknown } | null = null;
+  try {
+    reply = match ? (JSON.parse(match[0]) as { decision?: unknown; reason?: unknown }) : null;
+  } catch {
+    reply = null;
+  }
+  if (reply?.decision !== 'ship' && reply?.decision !== 'hold') {
+    return unavailable('the reviewer did not answer with {"decision":"ship"|"hold"}');
+  }
+  const reason = typeof reply.reason === 'string' && reply.reason.trim() ? oneLine(reply.reason) : `reviewer chose ${reply.decision}`;
+  return { outcome: reply.decision === 'ship' ? 'approve' : 'hold', detail: reason };
 }

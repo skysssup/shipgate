@@ -1,33 +1,62 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { writeRepoConfig } from '../src/config.js';
-import { gatherStatus, printStatus } from '../src/commands/status.js';
+import { realpathSync, writeFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { formatStatus, gatherStatus } from '../src/commands/status.js';
+import { addOrigin, cli, repo, tempDir } from './helpers.js';
 
-const dirs: string[] = [];
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
-});
+describe('status', () => {
+  it.each(['skysssup', undefined])('reports account %s in JSON and human output', (account) => {
+    const r = repo({ account, level: 'strict', agentReview: true });
+    const report = gatherStatus(r.dir);
+    expect(report).toMatchObject({
+      inGitRepo: true,
+      branch: 'main',
+      enabled: true,
+      level: 'strict',
+      agentReview: true,
+      account: account ?? null,
+      config: { state: 'ok' },
+      destination: { visibility: 'none' },
+      busyCount: 0,
+      lock: { state: 'free' },
+    });
+    expect(realpathSync.native(report.root!)).toBe(realpathSync.native(r.dir));
+    const text = formatStatus(report).join('\n');
+    expect(text).toContain('enabled · strict · external review on');
+    if (account) expect(text).toContain(`account  ${account} (display only)`);
+    else expect(text).not.toContain('account');
+  });
 
-describe('configured account status', () => {
-  it.each(['skysssup', undefined])('shows account %s in JSON and human output', (account) => {
-    const root = mkdtempSync(join(tmpdir(), 'shipgate-status-'));
-    dirs.push(root);
-    execFileSync('git', ['init', '-b', 'main'], { cwd: root });
-    vi.stubEnv('SHIPGATE_CLAUDE_SETTINGS', join(root, 'claude', 'settings.json'));
-    vi.stubEnv('SHIPGATE_CURSOR_HOOKS', join(root, 'cursor', 'hooks.json'));
-    writeRepoConfig(root, { enabled: true, level: 'balanced', agentReview: false, publicOk: false, account });
-    const report = gatherStatus(root);
-    expect(report.account).toBe(account ?? null);
-    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    printStatus(report, true);
-    expect(JSON.parse(String(stdout.mock.calls[0][0])).account).toBe(account ?? null);
-    printStatus(report, false);
-    expect(String(stderr.mock.calls[0][0])).toContain(`account: ${account ?? '—'}`);
+  it('explains invalid configuration instead of showing it as disabled', () => {
+    const r = repo(null);
+    r.write('.shipgate.json', '{"level":"loose"}');
+    const report = gatherStatus(r.dir);
+    expect(report.config).toMatchObject({ state: 'invalid', error: expect.stringContaining('"level" must be') });
+    expect(formatStatus(report).join('\n')).toMatch(/config   INVALID: "level" must be/);
+  });
+
+  it('shows the destination, a stale lock, and the hook state', () => {
+    const r = repo();
+    addOrigin(r);
+    writeFileSync(join(r.dir, '.git', 'shipgate-ship.lock'), JSON.stringify({ pid: 999999999, hostname: hostname(), startedAt: 0, command: 'ship', nonce: 'n' }));
+    const report = gatherStatus(r.dir);
+    expect(report.destination?.visibility).toBe('other-host');
+    expect(report.lock).toMatchObject({ state: 'stale', pid: 999999999 });
+    expect(formatStatus(report).join('\n')).toMatch(/lock     stale \(process gone; the next ship or undo removes it\)/);
+    expect(report.hooks).toEqual(expect.objectContaining({ claude: false, cursor: false }));
+  });
+
+  it('writes human and JSON output to stdout only', () => {
+    const r = repo();
+    const human = cli(r.dir, ['status']);
+    expect(human.status).toBe(0);
+    expect(human.stderr).toBe('');
+    expect(human.stdout).toMatch(/^shipgate \d+\.\d+\.\d+\n  repo /);
+    const json = cli(r.dir, ['status', '--json']);
+    expect(json.stderr).toBe('');
+    expect(JSON.parse(json.stdout)).toMatchObject({ enabled: true, level: 'balanced', inGitRepo: true });
+    const outside = cli(tempDir(), ['status', '--json']);
+    expect(JSON.parse(outside.stdout)).toMatchObject({ inGitRepo: false, config: { state: 'not-applicable' } });
   });
 });

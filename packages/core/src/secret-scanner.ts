@@ -3,21 +3,23 @@ import type { SecretFinding } from './types.js';
 export interface ScanFile {
   path: string;
   content: string;
-  /** True when the path is absent on disk (e.g. staged deletion). */
+  /** True for a staged deletion: the path is checked by filename rules only. */
   missing?: boolean;
 }
 
-interface Rule {
+interface PatternRule {
   id: string;
-  confidence: 'high' | 'medium';
-  test: (content: string, path: string, file: ScanFile) => string | null;
+  confidence: SecretFinding['confidence'];
+  pattern: RegExp;
+  /** Capture group holding the credential when the match also includes a key name. */
+  valueGroup?: number;
+  /** Fixed leading part of the value. The remainder is checked for placeholder text. */
+  prefix?: RegExp;
 }
 
-const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/i;
-
 /**
- * Narrow placeholder exemptions — known fixture shapes only.
- * Avoid broad /EXAMPLE/i or /x{4,}/ which suppress real token-shaped matches.
+ * Narrow placeholder exemptions. Broad patterns such as /EXAMPLE/i would hide real
+ * token-shaped values, so each entry describes a complete placeholder value.
  */
 const PLACEHOLDER_PATTERNS: RegExp[] = [
   /^your-[\w-]*-?here$/i,
@@ -28,187 +30,129 @@ const PLACEHOLDER_PATTERNS: RegExp[] = [
   /^<\w[\w-]*>$/,
   /^\$\{[\w.]+\}$/,
   /^xxx+$/i,
-  /^AKIAIOSFODNN7EXAMPLE$/i, // AWS docs fixture only
+  /^AKIAIOSFODNN7EXAMPLE$/i,
 ];
 
-/** True when a candidate secret value looks like an intentional placeholder. */
+const PEM_HEADER = /-----BEGIN (?:[A-Z0-9]+ ){0,3}PRIVATE KEY(?: BLOCK)?-----/g;
+const PEM_BLOCK =
+  /-----BEGIN (?:[A-Z0-9]+ ){0,3}PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ ){0,3}PRIVATE KEY(?: BLOCK)?-----|$)/g;
+const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/i;
+const ENV_FILENAME = /(^|[/\\])\.env(\.|$)/i;
+
+const PATTERN_RULES: PatternRule[] = [
+  { id: 'aws-access-key', confidence: 'high', pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, prefix: /^(?:AKIA|ASIA)/ },
+  {
+    id: 'aws-secret-key',
+    confidence: 'medium',
+    pattern: /(?:aws_secret_access_key|aws_secret)\s*[=:]\s*["']?([A-Za-z0-9/+=]{40})["']?/gi,
+    valueGroup: 1,
+  },
+  { id: 'openai-key', confidence: 'high', pattern: /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/g, prefix: /^sk-(?:proj-|svcacct-|admin-)?/ },
+  { id: 'anthropic-key', confidence: 'high', pattern: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g, prefix: /^sk-ant-(?:[a-z]+\d+-)?/ },
+  {
+    id: 'github-token',
+    confidence: 'high',
+    pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    prefix: /^(?:gh[pousr]_|github_pat_)/,
+  },
+  { id: 'slack-token', confidence: 'high', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, prefix: /^xox[baprs]-/ },
+  { id: 'private-key-pem', confidence: 'high', pattern: PEM_HEADER },
+  { id: 'stripe-key', confidence: 'high', pattern: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, prefix: /^(?:sk|rk)_(?:live|test)_/ },
+  { id: 'google-api-key', confidence: 'medium', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/g, prefix: /^AIza/ },
+  { id: 'npm-token', confidence: 'high', pattern: /\bnpm_[A-Za-z0-9]{36,}\b/g, prefix: /^npm_/ },
+  { id: 'jwt', confidence: 'medium', pattern: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, prefix: /^eyJ/ },
+];
+
+/** Rule identifiers in scan order, including the dotenv filename rule. */
+export const SECRET_RULE_IDS: readonly string[] = [...PATTERN_RULES.map((r) => r.id), 'dotenv-file'];
+
+/** True when a candidate value looks like an intentional placeholder. */
 export function isPlaceholderValue(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return true;
   return PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed));
 }
 
-/** Template filenames are exempt only from the dotenv filename rule. */
+/** Template filenames are exempt from the dotenv filename rule; their contents are still scanned. */
 export function isExemptFilename(path: string): boolean {
   const base = path.split(/[/\\]/).pop() ?? path;
   return TEMPLATE_SUFFIX.test(base);
 }
 
-const ENV_FILENAME = /(^|[/\\])\.env(\.|$)/i;
-
-function redact(s: string, max = 24): string {
-  if (s.length <= max) return s.slice(0, 4) + '…';
-  return s.slice(0, 8) + '…' + s.slice(-4);
+/** Show enough of a value to locate it without printing most of it. */
+function mask(value: string): string {
+  if (value.length <= 12) return `${value.slice(0, 2)}…`;
+  const lead = Math.min(8, Math.floor(value.length / 4));
+  return value.length >= 24 ? `${value.slice(0, lead)}…${value.slice(-4)}` : `${value.slice(0, lead)}…`;
 }
 
-function firstMatch(
-  content: string,
-  re: RegExp,
-  filter?: (m: string, groups: string[]) => boolean,
-): string | null {
-  const flags = re.flags.includes('g') ? re.flags : re.flags + 'g';
-  const global = new RegExp(re.source, flags);
-  let m: RegExpExecArray | null;
-  while ((m = global.exec(content)) !== null) {
-    const hit = m[0];
-    const groups = m.slice(1);
-    const valueForPlaceholder = groups.find(Boolean) ?? hit;
-    if (isPlaceholderValue(valueForPlaceholder) || isPlaceholderValue(hit)) {
-      continue;
-    }
-    if (filter && !filter(hit, groups)) continue;
-    return hit;
+function isPlaceholderMatch(rule: PatternRule, match: RegExpExecArray, content: string): boolean {
+  if (rule.id === 'private-key-pem') {
+    const block = content.slice(match.index, match.index + 200);
+    const end = block.indexOf('-----END');
+    const body = end === -1 ? block : block.slice(0, end);
+    return end !== -1 && /YOUR|EXAMPLE|PLACEHOLDER|REDACTED/i.test(body);
   }
-  return null;
+  const value = rule.valueGroup ? match[rule.valueGroup] ?? match[0] : match[0];
+  const body = rule.prefix ? value.replace(rule.prefix, '') : value;
+  return isPlaceholderValue(value) || isPlaceholderValue(body);
 }
 
-const RULES: Rule[] = [
-  {
-    id: 'aws-access-key',
-    confidence: 'high',
-    test: (c) =>
-      firstMatch(c, /\bAKIA[0-9A-Z]{16}\b/),
-  },
-  {
-    id: 'aws-secret-key',
-    confidence: 'medium',
-    test: (c) =>
-      firstMatch(
-        c,
-        /(?:aws_secret_access_key|aws_secret)\s*[=:]\s*["']?([A-Za-z0-9/+=]{40})["']?/i,
-      ),
-  },
-  {
-    id: 'openai-key',
-    confidence: 'high',
-    test: (c) => firstMatch(c, /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/),
-  },
-  {
-    id: 'anthropic-key',
-    confidence: 'high',
-    test: (c) => firstMatch(c, /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/),
-  },
-  {
-    id: 'github-token',
-    confidence: 'high',
-    test: (c) =>
-      firstMatch(
-        c,
-        /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
-      ),
-  },
-  {
-    id: 'slack-token',
-    confidence: 'high',
-    test: (c) => firstMatch(c, /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/),
-  },
-  {
-    id: 'private-key-pem',
-    confidence: 'high',
-    test: (c) => {
-      if (/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/.test(c)) {
-        if (/YOUR|EXAMPLE|PLACEHOLDER/i.test(c) && c.length < 200) return null;
-        return '-----BEGIN PRIVATE KEY-----';
-      }
-      return null;
-    },
-  },
-  {
-    id: 'stripe-key',
-    confidence: 'high',
-    test: (c) => firstMatch(c, /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/),
-  },
-  {
-    id: 'google-api-key',
-    confidence: 'medium',
-    test: (c) => firstMatch(c, /\bAIza[0-9A-Za-z\-_]{35}\b/),
-  },
-  {
-    id: 'npm-token',
-    confidence: 'high',
-    test: (c) => firstMatch(c, /\bnpm_[A-Za-z0-9]{36,}\b/),
-  },
-  {
-    id: 'jwt',
-    confidence: 'medium',
-    test: (c) =>
-      firstMatch(
-        c,
-        /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
-      ),
-  },
-  {
-    id: 'dotenv-file',
-    confidence: 'high',
-    test: (_c, path, file) => {
-      if (file.missing) return null; // deletion-only — allow credential cleanup
-      if (isExemptFilename(path)) return null;
-      if (ENV_FILENAME.test(path)) return path;
-      return null;
-    },
-  },
-];
+function lineOf(content: string, index: number): number {
+  let line = 1;
+  for (let i = content.indexOf('\n'); i !== -1 && i < index; i = content.indexOf('\n', i + 1)) line += 1;
+  return line;
+}
+
+function scanContent(path: string, content: string, findings: SecretFinding[]): void {
+  for (const rule of PATTERN_RULES) {
+    const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
+    for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
+      if (isPlaceholderMatch(rule, match, content)) continue;
+      const value = rule.valueGroup ? match[rule.valueGroup] ?? match[0] : match[0];
+      findings.push({
+        path,
+        ruleId: rule.id,
+        excerpt: rule.id === 'private-key-pem' ? match[0] : mask(value),
+        confidence: rule.confidence,
+        line: lineOf(content, match.index),
+      });
+      break;
+    }
+  }
+}
 
 /**
- * Scan file contents for high/medium confidence secrets.
- * Template contents are scanned. Placeholder-looking values are skipped.
+ * Scan file contents for credential-shaped values. Reports the first match of each
+ * rule per file. Placeholder-looking values are skipped; template files are scanned.
  */
 export function scanSecrets(files: ScanFile[]): SecretFinding[] {
   const findings: SecretFinding[] = [];
-
   for (const file of files) {
-
-    for (const rule of RULES) {
-      const hit = rule.test(file.content, file.path, file);
-      if (!hit) continue;
-      findings.push({
-        path: file.path,
-        ruleId: rule.id,
-        excerpt: redact(hit),
-        confidence: rule.confidence,
-      });
+    if (!file.missing) scanContent(file.path, file.content, findings);
+    if (!file.missing && !isExemptFilename(file.path) && ENV_FILENAME.test(file.path)) {
+      findings.push({ path: file.path, ruleId: 'dotenv-file', excerpt: file.path, confidence: 'high' });
     }
   }
-
   return findings;
 }
 
-/** Scan free-form text (e.g. a commit message or prompt) without a path context. */
-export function scanTextForSecrets(text: string): SecretFinding[] {
-  return scanSecrets([{ path: '<text>', content: text }]).filter(
-    (f) => f.ruleId !== 'dotenv-file',
-  );
+/** Scan command-line text such as a commit message or prompt. */
+export function scanTextForSecrets(text: string, label = '<text>'): SecretFinding[] {
+  const findings: SecretFinding[] = [];
+  scanContent(label, text, findings);
+  return findings;
 }
 
-/** Redact known secret shapes from a diff before external review. */
+/** Replace every credential-shaped value, including placeholders, with [REDACTED]. */
 export function redactSecretsInText(text: string): string {
-  let out = text;
-  const patterns: RegExp[] = [
-    /(?:aws_secret_access_key|aws_secret)\s*[=:]\s*["']?([A-Za-z0-9/+=]{40})["']?/gi,
-    /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/g,
-    /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/g,
-    /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/g,
-    /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b/g,
-    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
-    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
-    /\bAKIA[0-9A-Z]{16}\b/g,
-    /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
-    /\bnpm_[A-Za-z0-9]{36,}\b/g,
-    /\bAIza[0-9A-Za-z\-_]{35}\b/g,
-  ];
-  for (const re of patterns) {
-    out = out.replace(re, '[REDACTED]');
+  let out = text.replace(new RegExp(PEM_BLOCK.source, PEM_BLOCK.flags), '[REDACTED]');
+  for (const rule of PATTERN_RULES) {
+    if (rule.id === 'private-key-pem') continue;
+    out = out.replace(new RegExp(rule.pattern.source, rule.pattern.flags), (match: string, ...groups: unknown[]) => {
+      const value = rule.valueGroup ? groups[rule.valueGroup - 1] : undefined;
+      return typeof value === 'string' ? match.replace(value, '[REDACTED]') : '[REDACTED]';
+    });
   }
   return out;
 }

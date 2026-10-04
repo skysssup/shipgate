@@ -1,25 +1,48 @@
 {
   "name": "@shipgate/cli",
   "version": "1.0.1",
-  "description": "Shipgate CLI for policy-controlled Git commits, pushes and undo",
+  "description": "shipgate command: stage all changes, scan them for credentials, apply a local policy, then commit and push.",
+  "keywords": [
+    "git",
+    "cli",
+    "secrets",
+    "pre-commit",
+    "coding-agents",
+    "claude-code",
+    "cursor"
+  ],
   "type": "module",
   "bin": {
     "shipgate": "./dist/bin.js"
   },
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "web"
   ],
   "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "license": "MIT",
+  "author": "skysssup <291946563+skysssup@users.noreply.github.com>",
+  "homepage": "https://github.com/skysssup/shipgate#readme",
+  "bugs": {
+    "url": "https://github.com/skysssup/shipgate/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skysssup/shipgate.git",
+    "directory": "packages/cli"
+  },
   "dependencies": {
-    "@shipgate/core": "*"
+    "@shipgate/core": "1.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

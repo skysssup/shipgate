@@ -1,17 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-function readVersion(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(
-      readFileSync(join(here, '../package.json'), 'utf8'),
-    ) as { version?: string };
-    return pkg.version || '0.0.0';
-  } catch {
-    return '1.0.0';
-  }
-}
-
-export const VERSION = readVersion();
+/** Version from this package's package.json (one directory above dist/). */
+export const VERSION: string = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+).version;

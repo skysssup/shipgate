@@ -1,15 +1,16 @@
 import { setupHooks } from '../hooks.js';
+import { detail } from '../report.js';
+import type { CommandResult } from './on-off.js';
 
-export function runSetup(): number {
+export function runSetup(): CommandResult {
   const result = setupHooks();
-  for (const n of result.notes) {
-    process.stderr.write(`shipgate: ${n}\n`);
-  }
-  process.stderr.write(
-    `shipgate: setup done (claude=${result.claude}, cursor=${result.cursor})\n`,
-  );
-  process.stderr.write(
-    'shipgate: hooks are idempotent — re-run setup anytime; unrelated hooks are preserved\n',
-  );
-  return 0;
+  const failed = result.claude === 'skipped' || result.claude === 'unwritable' || result.cursor === 'skipped' || result.cursor === 'unwritable';
+  return {
+    exitCode: failed ? 1 : 0,
+    lines: [
+      `shipgate: ${failed ? 'hook setup incomplete' : 'hooks ready'} (Claude Code: ${result.claude}, Cursor: ${result.cursor})`,
+      ...result.notes.map((note) => detail('note', note)),
+      detail('scope', 'The hooks run after every agent turn in every repository, but act only where shipgate on was run.'),
+    ],
+  };
 }

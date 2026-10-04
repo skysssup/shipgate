@@ -1,120 +1,120 @@
-import { execFileSync, type ExecFileSyncOptions } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+export interface GitOptions {
+  /** Return stdout (possibly empty) instead of throwing when git exits non-zero. */
+  allowFail?: boolean;
+  input?: string;
+  /** `latin1` keeps every byte as one character, for binary-safe parsing. */
+  encoding?: 'utf8' | 'latin1';
+  /** Keep trailing whitespace, for outputs parsed by byte count. */
+  keepTrailing?: boolean;
+}
 
 export interface GitRunner {
-  run(args: string[], opts?: { allowFail?: boolean; maxBuffer?: number }): string;
+  run(args: string[], opts?: GitOptions): string;
+}
+
+/** A failed git command. The message is git's own error output. */
+class GitError extends Error {
+  constructor(
+    readonly args: string[],
+    readonly status: number | null,
+    readonly stderr: string,
+  ) {
+    super(stderr.trim() || `git ${args[0]} exited with status ${status}`);
+    this.name = 'GitError';
+  }
 }
 
 export function createGit(cwd: string = process.cwd()): GitRunner {
   return {
     run(args, opts = {}) {
-      const execOpts: ExecFileSyncOptions = {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: opts.maxBuffer,
-      };
       try {
-        return String(execFileSync('git', args, execOpts)).trimEnd();
+        const out = execFileSync('git', args, {
+          cwd,
+          encoding: opts.encoding ?? 'utf8',
+          input: opts.input,
+          stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+          maxBuffer: 1024 * 1024 * 1024,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        });
+        return opts.keepTrailing ? out : out.trimEnd();
       } catch (err) {
-        if (opts.allowFail) {
-          const e = err as { stdout?: Buffer | string; stderr?: Buffer | string };
-          return String(e.stdout ?? '').trimEnd();
-        }
-        throw err;
+        const e = err as { status?: number | null; stdout?: string; stderr?: string; code?: string; message: string };
+        if (opts.allowFail && e.code !== 'ENOENT') return String(e.stdout ?? '').trimEnd();
+        if (e.code === 'ENOENT') throw new Error('git was not found on PATH');
+        throw new GitError(args, e.status ?? null, String(e.stderr ?? e.message));
       }
     },
   };
 }
 
-export function gitRoot(git: GitRunner): string | null {
+/** First line of an error, for one-line summaries. */
+export function firstLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.split('\n').map((line) => line.replace(/^(fatal|error): /, '').trim()).find(Boolean) ?? 'unknown error';
+}
+
+export interface RepoInfo {
+  root: string;
+  gitDir: string;
+  /** Short branch name, or '' when HEAD is detached. */
+  branch: string;
+  /** HEAD commit, or '' on an unborn branch. */
+  head: string;
+}
+
+/** Null when cwd is not inside a Git work tree. */
+export function repoInfo(git: GitRunner): RepoInfo | null {
+  let root: string;
   try {
-    return git.run(['rev-parse', '--show-toplevel']);
+    root = git.run(['rev-parse', '--show-toplevel']);
   } catch {
     return null;
   }
+  if (!root) return null;
+  return {
+    root,
+    gitDir: git.run(['rev-parse', '--absolute-git-dir']),
+    branch: git.run(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFail: true }),
+    head: git.run(['rev-parse', '--quiet', '--verify', 'HEAD^{commit}'], { allowFail: true }),
+  };
 }
 
-export function gitDir(git: GitRunner): string | null {
-  try {
-    return git.run(['rev-parse', '--git-dir']);
-  } catch {
-    return null;
+export function gitPath(git: GitRunner, cwd: string, name: string): string {
+  return resolve(cwd, git.run(['rev-parse', '--git-path', name]));
+}
+
+const IN_PROGRESS: Array<[string, string]> = [
+  ['MERGE_HEAD', 'a merge'],
+  ['CHERRY_PICK_HEAD', 'a cherry-pick'],
+  ['REVERT_HEAD', 'a revert'],
+  ['rebase-merge', 'a rebase'],
+  ['rebase-apply', 'a rebase or git am'],
+  ['BISECT_LOG', 'a bisect'],
+];
+
+/** Describes an unfinished merge, rebase, or similar operation, if any. */
+export function operationInProgress(git: GitRunner, cwd: string): string | null {
+  for (const [name, label] of IN_PROGRESS) {
+    if (existsSync(gitPath(git, cwd, name))) return label;
   }
-}
-
-/** Parse a git status --porcelain path field (handles renames + quotes). */
-export function parsePorcelainPath(pathField: string): string {
-  let p = pathField.trim();
-  if (p.includes(' -> ')) {
-    p = p.slice(p.lastIndexOf(' -> ') + 4).trim();
-  }
-  if (p.startsWith('"') && p.endsWith('"')) {
-    p = p.slice(1, -1).replace(/\\([\\"ntr])/g, (_, ch: string) => {
-      if (ch === 'n') return '\n';
-      if (ch === 't') return '\t';
-      if (ch === 'r') return '\r';
-      return ch;
-    });
-  }
-  return p;
-}
-
-export function dirtyFiles(git: GitRunner): string[] {
-  const out = git.run(['status', '--porcelain'], { allowFail: true });
-  if (!out.trim()) return [];
-  return out
-    .split('\n')
-    .map((line) => parsePorcelainPath(line.slice(3)))
-    .filter(Boolean);
-}
-
-export function stagedDiffNames(git: GitRunner): string[] {
-  const out = git.run(['diff', '--cached', '--name-only', '--no-relative', '-z', '--', ':/']);
-  if (!out.trim()) return [];
-  return out.split('\0').filter(Boolean);
-}
-
-export function remoteUrl(git: GitRunner): string | null {
-  try {
-    return git.run(['remote', 'get-url', 'origin']);
-  } catch {
-    return null;
-  }
-}
-
-export function hasOrigin(git: GitRunner): boolean {
-  return Boolean(remoteUrl(git));
+  return git.run(['ls-files', '--unmerged', '-z']) ? 'unresolved merge conflicts' : null;
 }
 
 export function remotePushUrls(git: GitRunner): string[] {
-  if (!hasOrigin(git)) return [];
-  const urls = git.run(['remote', 'get-url', '--push', '--all', 'origin']).split('\n').filter(Boolean);
-  if (!urls.length) throw new Error('Cannot determine origin push URLs');
-  return urls;
+  if (!git.run(['remote'], { allowFail: true }).split('\n').includes('origin')) return [];
+  return git.run(['remote', 'get-url', '--push', '--all', 'origin']).split('\n').filter(Boolean);
 }
 
-export function currentBranch(git: GitRunner): string {
-  return git.run(['rev-parse', '--abbrev-ref', 'HEAD'], { allowFail: true }) || 'HEAD';
+export function hasUpstream(git: GitRunner, branch: string): boolean {
+  return Boolean(git.run(['config', '--get', `branch.${branch}.remote`], { allowFail: true }));
 }
 
-export function headMessage(git: GitRunner): string {
-  return git.run(['log', '-1', '--format=%B'], { allowFail: true });
-}
-
-export function headSha(git: GitRunner): string {
-  return git.run(['rev-parse', 'HEAD'], { allowFail: true });
-}
-
-export function parentExists(git: GitRunner): boolean {
-  try {
-    git.run(['rev-parse', '--verify', 'HEAD~1']);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Staged unified diff for optional external review (may be empty). */
-export function stagedPatch(git: GitRunner): string {
-  return git.run(['diff', '--cached', '--no-color', '--no-relative', '--', ':/']);
+/** Staged diff for external review, excluding the given paths. */
+export function stagedPatch(git: GitRunner, exclude: string[]): string {
+  const pathspecs = [':/', ...exclude.map((path) => `:(top,exclude,literal)${path}`)];
+  return git.run(['diff', '--cached', '--no-color', '--no-ext-diff', '--no-relative', '--', ...pathspecs]);
 }

@@ -8,61 +8,52 @@ export interface SubjectInput {
   changedFiles?: string[];
 }
 
+export type MessageSource = 'explicit' | 'prompt' | 'files' | 'fallback';
+
 /**
- * Build a one-line commit subject (≤72 chars) plus the Shipgate trailer.
- * Prefer -m, else prompt (never if secrets detected in prompt), else file list.
+ * Build the commit message. An explicit message is kept as written (subject and
+ * body) and gets the Shipgate trailer. Otherwise Shipgate writes a one-line subject
+ * of at most 72 characters from the prompt, or from the changed file names when
+ * the prompt is missing or contains a credential-shaped value.
  */
 export function buildCommitMessage(input: SubjectInput): {
   subject: string;
   fullMessage: string;
-  source: 'explicit' | 'prompt' | 'files' | 'fallback';
+  source: MessageSource;
 } {
-  let subject: string;
-  let source: 'explicit' | 'prompt' | 'files' | 'fallback';
+  const explicit = input.explicitMessage?.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  if (explicit) {
+    return { subject: explicit.split('\n')[0], fullMessage: withTrailer(explicit), source: 'explicit' };
+  }
 
-  if (input.explicitMessage?.trim()) {
-    subject = flattenLine(input.explicitMessage);
-    source = 'explicit';
-  } else if (input.promptText?.trim()) {
-    const secrets = scanTextForSecrets(input.promptText);
-    if (secrets.length > 0) {
-      subject = fileListSubject(input.changedFiles);
-      source = input.changedFiles?.length ? 'files' : 'fallback';
-    } else {
-      subject = flattenLine(input.promptText);
-      source = 'prompt';
-    }
+  let subject: string;
+  let source: MessageSource;
+  const prompt = input.promptText?.trim();
+  if (prompt && scanTextForSecrets(prompt).length === 0) {
+    subject = prompt.replace(/\s+/g, ' ');
+    source = 'prompt';
   } else if (input.changedFiles?.length) {
-    subject = fileListSubject(input.changedFiles);
+    const names = input.changedFiles.map((f) => f.split(/[/\\]/).pop() || f);
+    const extra = names.length > 5 ? ` (+${names.length - 5})` : '';
+    subject = `update ${names.slice(0, 5).join(', ')}${extra}`;
     source = 'files';
   } else {
     subject = 'shipgate: auto ship';
     source = 'fallback';
   }
-
-  subject = truncate72(subject);
-  const fullMessage = `${subject}\n\n${SHIPPED_BY_TRAILER}\n`;
-  return { subject, fullMessage, source };
+  if (subject.length > 72) subject = `${subject.slice(0, 71).trimEnd()}…`;
+  return { subject, fullMessage: `${subject}\n\n${SHIPPED_BY_TRAILER}\n`, source };
 }
 
-function flattenLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+function withTrailer(message: string): string {
+  if (hasShipgateTrailer(message)) return `${message}\n`;
+  const paragraphs = message.split(/\n\s*\n/);
+  const last = paragraphs[paragraphs.length - 1];
+  const endsWithTrailers = paragraphs.length > 1 && last.split('\n').every((line) => /^[A-Za-z0-9-]+: \S/.test(line));
+  return `${message}${endsWithTrailers ? '\n' : '\n\n'}${SHIPPED_BY_TRAILER}\n`;
 }
 
-function truncate72(s: string): string {
-  if (s.length <= 72) return s;
-  return s.slice(0, 69).trimEnd() + '…';
-}
-
-function fileListSubject(files: string[] | undefined): string {
-  if (!files?.length) return 'shipgate: auto ship';
-  const names = files.map((f) => f.split(/[/\\]/).pop() ?? f);
-  const joined = names.slice(0, 5).join(', ');
-  const extra = names.length > 5 ? ` (+${names.length - 5})` : '';
-  return truncate72(`update ${joined}${extra}`);
-}
-
-/** True if a commit message body contains the Shipgate trailer. */
+/** True if a commit message contains the Shipgate trailer on its own line. */
 export function hasShipgateTrailer(message: string): boolean {
   return /(?:^|\n)Shipped-by:\s*shipgate\s*(?:\n|$)/i.test(message);
 }

@@ -36,7 +36,7 @@ describe('staged index preservation', () => {
       if (reason === 'commit' && args[0] === 'commit') throw new Error('simulated hook failure');
       return runner.run(args, opts);
     } };
-    const result = await runShip({ cwd: dir, git: injectedGit, isPublic: false, review: async () => ({ decision: 'hold', reason: 'needs review', failOpen: false }) });
+    const result = await runShip({ cwd: dir, git: injectedGit, review: async () => ({ outcome: 'hold', detail: 'needs review' }) });
     expect(['block', 'hold']).toContain(result.action);
     expect(readFileSync(join(dir, '.git', 'index')).equals(before)).toBe(true);
     expect(git('show', ':partial.txt')).toBe('staged\n');

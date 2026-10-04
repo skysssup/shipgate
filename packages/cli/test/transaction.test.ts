@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { runShip } from '../src/commands/ship.js';
 import { runUndo } from '../src/commands/undo.js';
 import { createGit } from '../src/git.js';
-import { readRepoConfig, writeRepoConfig } from '../src/config.js';
+import { loadRepoConfig, writeRepoConfig } from '../src/config.js';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -30,7 +30,7 @@ function pendingReview() {
   const wait = new Promise<void>((resolve) => { resume = resolve; });
   return { ready, resume: () => resume(), review: async () => {
     entered(); await wait;
-    return { decision: 'hold' as const, reason: 'test hold', failOpen: false };
+    return { outcome: 'hold' as const, detail: 'test hold' };
   } };
 }
 
@@ -45,7 +45,7 @@ describe('ship transactions', () => {
       return result;
     } };
     const head = git.run(['rev-parse', 'HEAD']);
-    const result = await runShip({ cwd: dir, git: wrapped, message: 'test', isPublic: false });
+    const result = await runShip({ cwd: dir, git: wrapped, message: 'test' });
     expect(result.action).toBe(secretStaged ? 'block' : 'ship');
     if (secretStaged) expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
     else expect(git.run(['show', 'HEAD:secrét file.txt'])).toBe('clean');
@@ -55,10 +55,10 @@ describe('ship transactions', () => {
     const { dir } = repository(true);
     writeFileSync(join(dir, 'file.txt'), 'changed');
     const pending = pendingReview();
-    const first = runShip({ cwd: dir, isPublic: false, review: pending.review });
+    const first = runShip({ cwd: dir, review: pending.review });
     await pending.ready;
     try {
-      expect((await runShip({ cwd: dir, message: 'competing', isPublic: false })).action).toBe('hold');
+      expect((await runShip({ cwd: dir, message: 'competing' })).action).toBe('hold');
       expect(runUndo({ cwd: dir }).reason).toMatch(/lock/);
     } finally { pending.resume(); }
     expect((await first).action).toBe('hold');
@@ -69,7 +69,7 @@ describe('ship transactions', () => {
     const { dir, git } = repository(true);
     writeFileSync(join(dir, 'file.txt'), 'changed');
     const pending = pendingReview();
-    const first = runShip({ cwd: dir, isPublic: false, review: pending.review });
+    const first = runShip({ cwd: dir, review: pending.review });
     await pending.ready;
     writeFileSync(join(dir, 'other.txt'), 'manual staged content');
     git.run(['add', 'other.txt']);
@@ -113,10 +113,10 @@ describe('ship transactions', () => {
     const index = readFileSync(indexPath);
     const head = rootGit.run(['rev-parse', 'HEAD']);
 
-    const result = await runShip({ cwd, isPublic: false });
+    const result = await runShip({ cwd });
 
     expect(result.action).toBe('block');
-    expect(result.reasons.join(' ')).toMatch(/secret/);
+    expect(result.reasons.join(' ')).toMatch(/credential finding/);
     expect(rootGit.run(['rev-parse', 'HEAD'])).toBe(head);
     expect(readFileSync(indexPath).equals(index)).toBe(true);
     expect(rootGit.run(['show', ':file.txt'])).toBe('staged');
@@ -144,8 +144,7 @@ describe('ship transactions', () => {
 
     const result = await runShip({
       cwd,
-      isPublic: false,
-      review: async () => ({ decision: 'hold', reason: 'needs review', failOpen: false }),
+      review: async () => ({ outcome: 'hold', detail: 'needs review' }),
     });
 
     expect(result.action).toBe('hold');
@@ -179,10 +178,10 @@ describe('ship transactions', () => {
     const index = readFileSync(indexPath);
     const head = rootGit.run(['rev-parse', 'HEAD']);
 
-    const result = await runShip({ cwd, message: 'test', isPublic: false });
+    const result = await runShip({ cwd, message: 'test' });
 
     expect(result.action).toBe('block');
-    expect(result.reasons.join(' ')).toMatch(/secret/);
+    expect(result.reasons.join(' ')).toMatch(/credential finding/);
     expect(rootGit.run(['rev-parse', 'HEAD'])).toBe(head);
     expect(readFileSync(indexPath).equals(index)).toBe(true);
   });
@@ -195,9 +194,9 @@ describe('ship transactions', () => {
     writeFileSync(join(dir, 'file.txt'), 'root change');
     writeFileSync(join(cwd, 'nested.txt'), 'nested change');
     let patch = '';
-    const result = await runShip({ cwd, isPublic: false, review: async (input) => {
-      patch = input.redactedDiff ?? '';
-      return { decision: 'hold', reason: 'test hold', failOpen: false };
+    const result = await runShip({ cwd, review: async (input) => {
+      patch = input.diff;
+      return { outcome: 'hold', detail: 'test hold' };
     } });
     expect(result.action).toBe('hold');
     expect(patch).toContain('+root change');
@@ -209,7 +208,7 @@ describe('ship transactions', () => {
     const content = 'a'.repeat(2 * 1024 * 1024) + (secret ? '\n' + ['sk', 'b'.repeat(30)].join('-') : '');
     writeFileSync(join(dir, 'large.txt'), content);
     const head = git.run(['rev-parse', 'HEAD']);
-    const result = await runShip({ cwd: dir, message: 'large file', isPublic: false });
+    const result = await runShip({ cwd: dir, message: 'large file' });
     expect(result.action).toBe(secret ? 'block' : 'ship');
     if (secret) expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
     else expect(git.run(['cat-file', '-s', 'HEAD:large.txt'])).toBe(String(Buffer.byteLength(content)));
@@ -220,10 +219,10 @@ describe('ship transactions', () => {
     writeFileSync(join(dir, 'large.txt'), Buffer.alloc(16 * 1024 * 1024 + 1, 'a'));
     const head = git.run(['rev-parse', 'HEAD']);
     const index = readFileSync(join(dir, '.git', 'index'));
-    const result = await runShip({ cwd: dir, message: 'large file', isPublic: false });
+    const result = await runShip({ cwd: dir, message: 'large file' });
     expect(result.action).toBe('hold');
     expect(result.exitCode).toBe(1);
-    expect(result.reasons.join(' ')).toMatch(/at most 16 MiB/);
+    expect(result.reasons.join(' ')).toMatch(/up to 16 MiB/);
     expect(git.run(['rev-parse', 'HEAD'])).toBe(head);
     expect(readFileSync(join(dir, '.git', 'index')).equals(index)).toBe(true);
     expect(existsSync(join(dir, '.git', 'shipgate-ship.lock'))).toBe(false);
@@ -234,6 +233,6 @@ describe('policy validation', () => {
   it.each([null, [], { level: 'strcit' }, { enabled: 'false' }, { agentReview: 'false' }, { publicOk: 'false' }])('rejects invalid policy %j', (value) => {
     const { dir } = repository();
     writeFileSync(join(dir, '.shipgate.json'), JSON.stringify(value));
-    expect(readRepoConfig(dir)).toBeNull();
+    expect(loadRepoConfig(dir).state).toBe('invalid');
   });
 });

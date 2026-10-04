@@ -2,14 +2,18 @@
   "name": "shipgate",
   "version": "1.0.1",
   "private": true,
-  "description": "Policy-controlled Git commits and pushes for coding agents, with credential scanning and undo.",
+  "description": "CLI that stages, scans, commits, and pushes coding-agent changes under a local policy, plus a browser policy simulator.",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
     "build": "npm run build -w @shipgate/core && npm run build -w @shipgate/cli && npm run build -w @shipgate/web",
-    "test": "npm run build -w @shipgate/core && npm run test -w @shipgate/core && npm run test -w @shipgate/cli && npm run test -w @shipgate/web && npm run build -w @shipgate/web",
+    "test": "npm run build && npm run test -w @shipgate/core && npm run test -w @shipgate/cli && npm run test -w @shipgate/web",
+    "test:e2e": "npm run test:e2e -w @shipgate/web",
+    "examples": "node examples/examples.mjs",
+    "pack:release": "node scripts/pack-release.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
     "dev:web": "npm run dev -w @shipgate/web"
   },
   "engines": {
@@ -17,11 +21,12 @@
   },
   "license": "MIT",
   "author": "skysssup <291946563+skysssup@users.noreply.github.com>",
+  "homepage": "https://github.com/skysssup/shipgate#readme",
+  "bugs": {
+    "url": "https://github.com/skysssup/shipgate/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/skysssup/shipgate.git"
-  },
-  "devDependencies": {
-    "vite": "^6.4.3"
   }
 }
