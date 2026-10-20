@@ -1,7 +1,9 @@
-import { request } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { serveConsole, type ConsoleServer } from '../src/commands/console.js';
+import { writeGlobalConfig } from '../src/config.js';
 import { addOrigin, cli, remoteHead, repo, SYNTHETIC, tempDir, write } from './helpers.js';
 
 const servers: ConsoleServer[] = [];
@@ -153,6 +155,45 @@ describe('repository console server', () => {
     const results = await Promise.all([api(s, 'POST', '/api/ship', { message: 'one' }), api(s, 'POST', '/api/ship', { message: 'two' })]);
     const outcomes = results.map((x) => x.json().outcome).sort();
     expect(outcomes).toEqual(['committed', 'nothing-to-ship']);
+  });
+
+  it('queues other commands behind a ship that is waiting for external review', async () => {
+    let release: (() => void) | undefined;
+    let reviewing!: () => void;
+    const reviewStarted = new Promise<void>((done) => (reviewing = done));
+    const reviewer: Server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        reviewing();
+        release = () => {
+          release = undefined;
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ choices: [{ message: { content: '{"decision":"ship","reason":"ok"}' } }] }));
+        };
+      });
+    });
+    await new Promise<void>((done) => reviewer.listen(0, '127.0.0.1', done));
+    try {
+      writeGlobalConfig({ openRouterApiKey: 'test-review-key', baseUrl: `http://127.0.0.1:${(reviewer.address() as AddressInfo).port}/v1` });
+      const r = repo({ agentReview: true, publicOk: true });
+      r.write('a.txt', 'a\n');
+      const s = await start(r.dir);
+      const order: string[] = [];
+      const ship = api(s, 'POST', '/api/ship', { prompt: 'add a', confirm: true }).then((x) => { order.push('ship'); return x.json(); });
+      await reviewStarted;
+      const off = api(s, 'POST', '/api/off', {}).then((x) => { order.push('off'); return x.json(); });
+      await new Promise((done) => setTimeout(done, 200));
+      expect(order).toEqual([]);
+      release!();
+      const [shipped, disabled] = await Promise.all([ship, off]);
+      expect(order).toEqual(['ship', 'off']);
+      expect(shipped.review).toBe('approved');
+      expect(disabled.exitCode).toBe(0);
+    } finally {
+      release?.();
+      writeGlobalConfig({});
+      await new Promise((done) => reviewer.close(done));
+    }
   });
 
   it('starts from the CLI only inside a repository and validates --port', () => {
