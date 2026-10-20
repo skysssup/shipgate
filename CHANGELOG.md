@@ -9,6 +9,14 @@
 - `shipgate ui`: a repository console on 127.0.0.1 with a token-protected JSON API that runs the
   same functions as `status`, `preview`, `on`, `off`, `ship`, `undo`, and `setup`, plus the recent
   commit history.
+- Repository console in the web app (`#/repo`, opened by `shipgate ui`): status cards (branch,
+  policy, destination, busy agents and lock, hooks with install), a live preview with changes,
+  findings, reasons, and every check, the same run options as `ship` with the matching command,
+  Ship and Undo behind confirmation dialogs with the CLI's report, a validated settings form with
+  enable/disable, and recent history marking Shipgate commits and what origin has. Loading, empty,
+  and error states; keyboard, screen-reader, 360 px, and light/dark support. Without `shipgate ui`
+  the tab explains how to start it.
+- Get started lists `shipgate preview` and `shipgate ui`.
 
 ## 2.2.0 — 2026-10-04
 

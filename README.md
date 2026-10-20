@@ -2,8 +2,10 @@
 
 Shipgate is a command-line tool for repositories where coding agents make changes. `shipgate ship`
 stages every change, scans the staged files for credential patterns, applies a policy you choose
-per repository, then commits and pushes. Agent stop hooks can run it after each turn. A browser
-simulator shows what the policy would decide for a given situation, and why.
+per repository, then commits and pushes. Agent stop hooks can run it after each turn. A local
+repository console (`shipgate ui`) shows the same status, preview, settings, history, and undo in
+the browser, and a browser simulator shows what the policy would decide for a given situation, and
+why.
 
 It is for people who let agents such as Claude Code or Cursor work in a repository and want those
 changes committed and pushed without publishing an API key, without committing on top of another
@@ -337,6 +339,30 @@ cd your-repo
 shipgate ui        # prints http://127.0.0.1:4174/#/repo; open it in a browser, Ctrl+C to stop
 ```
 
+![The repository console: status cards, a preview that blocks a .env key, settings, and history](docs/console.png)
+
+- **Status**: branch, policy level and options (or why `.shipgate.json` is invalid), push
+  destination and its visibility, busy agents and the lock, and the agent hooks, with an install
+  button.
+- **Preview and ship**: what `ship` would decide for the current changes, refreshed when you come
+  back to the tab or change an option: the changed paths, each finding with its line and masked
+  excerpt, the reasons, warnings and next step, every check in order, and the commit subject. The
+  `-m`, `--prompt`, `--force-secrets`, `--public-ok`, and `--confirm` options are the same as on
+  the command line, and the matching command is shown. **Ship…** is offered only when the preview
+  allows the run; it asks for confirmation and then shows the CLI's report.
+- **Settings**: level, external review, public-destination acknowledgement, model, and account,
+  checked before saving, with the equivalent `shipgate on` command. Enable and disable (with
+  confirmation). An invalid file is explained and never overwritten.
+- **History**: recent commits on the branch, which ones Shipgate made, and whether origin has
+  them. **Undo last ship…** appears when `undo` applies to HEAD.
+- Loading, empty, and error states for each panel; data already shown stays visible if a refresh
+  fails, with the reason. Works from 360 px wide, with the keyboard alone (dialogs trap focus and
+  start on Cancel; Escape closes them), with screen readers (results are announced), and in light
+  and dark themes.
+
+Opened from the static simulator build or `shipgate demo --serve`, the Repository tab explains how
+to start the console instead; the simulator never touches a repository.
+
 The console can ship, undo, change `.shipgate.json`, and install hooks, so it is guarded like a
 local tool with write access:
 
@@ -387,7 +413,7 @@ ones origin has, and whether `undo` applies), `POST /api/preview` and `POST /api
 ```text
 packages/core   policy decisions, scanner, commit messages, busy markers, example scenarios
 packages/cli    the shipgate command
-apps/web        the policy simulator (React, Vite)
+apps/web        the policy simulator and repository console (React, Vite)
 examples        generated example catalog and its runner
 scripts         release packaging and install verification
 ```
@@ -395,7 +421,8 @@ scripts         release packaging and install verification
 ```sh
 npm ci
 npm test                     # builds, then runs core, CLI (real Git repositories), and web tests
-npm run test:e2e             # browser tests; run npx playwright install chromium firefox once
+npm run test:e2e             # browser tests (simulator + console against a real shipgate ui);
+                             # needs npm run build first and npx playwright install chromium firefox once
 npm run examples -- --check  # verify examples/README.md against fresh runs
 npm run pack:release && npm run verify:package   # build tarballs, install them offline elsewhere
 ```

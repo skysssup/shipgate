@@ -122,6 +122,34 @@ try {
       }
     });
   });
+  // The repository console is served from the installed package, with its API behind the session token.
+  const consoleRepo = join(work, 'console-repo');
+  mkdirSync(consoleRepo);
+  run('git', ['init', '--quiet', '-b', 'main'], { cwd: consoleRepo, env });
+  run('git', ['commit', '--quiet', '--allow-empty', '-m', 'init'], { cwd: consoleRepo, env });
+  await new Promise((done, fail) => {
+    const child = spawn(process.execPath, [entry, 'ui', '--port', '0'], { cwd: consoleRepo, env });
+    child.on('error', fail);
+    child.on('exit', (code) => code && fail(new Error(`shipgate ui exited with ${code}`)));
+    child.stdout.on('data', async (chunk) => {
+      const url = /http:\/\/127\.0\.0\.1:\d+\//.exec(String(chunk))?.[0];
+      if (!url) return;
+      try {
+        const html = await (await fetch(url)).text();
+        const token = /<meta name="shipgate-console" content="([^"]+)"/.exec(html)?.[1];
+        assert(token, 'the console page has no session token');
+        assert((await fetch(new URL('api/status', url))).status === 401, 'the API answered without a token');
+        const status = await (await fetch(new URL('api/status', url), { headers: { 'X-Shipgate-Token': token } })).json();
+        assert(status.inGitRepo && status.branch === 'main', `unexpected status ${JSON.stringify(status)}`);
+        results.push('ok  ui serves the bundled console and its token-protected API');
+        done();
+      } catch (error) {
+        fail(error);
+      } finally {
+        child.kill();
+      }
+    });
+  });
   console.log(results.join('\n'));
 } finally {
   rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
