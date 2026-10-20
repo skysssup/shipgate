@@ -462,7 +462,9 @@ test('respects reduced motion', async ({ page }) => {
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`text meets WCAG AA contrast in the ${colorScheme} theme`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme });
+    // Measure settled colors: with motion on, a color transition that is still running
+    // after navigation can read as low contrast (seen as 4.44:1 on "Decision" under load).
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
     const pages = [
       '#/?example=credential-in-env',
       '#/?example=busy-agent',
