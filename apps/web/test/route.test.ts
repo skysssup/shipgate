@@ -11,6 +11,7 @@ describe('hash routes', () => {
     ['#/?example=medium-jwt&level=yolo', 'simulator', 'example=medium-jwt&level=yolo'],
     ['#/rules', 'rules', ''],
     ['#/start', 'start', ''],
+    ['#/repo', 'repo', ''],
     ['#/unknown?x=1', 'simulator', 'x=1'],
   ])('%j', (hash, view, query) => {
     const route = parseHash(hash);
@@ -20,6 +21,7 @@ describe('hash routes', () => {
 
   it('builds links', () => {
     expect(viewHref('rules')).toBe('#/rules');
+    expect(viewHref('repo')).toBe('#/repo');
     expect(viewHref('simulator', 'example=x')).toBe('#/?example=x');
   });
 });

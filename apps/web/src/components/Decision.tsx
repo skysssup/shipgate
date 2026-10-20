@@ -27,9 +27,9 @@ import {
 } from '../lib/model';
 import { ActionBadge, ActionIcon, Button, cx, InlineCode, Section } from './ui';
 
-type StepStatus = GateStatus | 'run';
+export type StepStatus = GateStatus | 'run';
 
-const STEP_TITLE: Record<GateId | 'commit' | 'push', string> = {
+export const STEP_TITLE: Record<GateId | 'commit' | 'push', string> = {
   'opt-in': 'Opt-in',
   busy: 'Busy agents',
   changes: 'Stage changes',
@@ -40,7 +40,7 @@ const STEP_TITLE: Record<GateId | 'commit' | 'push', string> = {
   push: 'Push',
 };
 
-const STATUS: Record<StepStatus, { label: string; icon: LucideIcon }> = {
+export const STATUS: Record<StepStatus, { label: string; icon: LucideIcon }> = {
   pass: { label: 'Passed', icon: Check },
   warn: { label: 'Warning', icon: TriangleAlert },
   block: { label: 'Blocked', icon: Ban },

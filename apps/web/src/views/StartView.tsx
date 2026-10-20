@@ -80,12 +80,19 @@ export function StartView({ version }: { version: string }) {
         </Step>
         <Step n={5} title="Check and take back">
           <p>
-            <code>status</code> shows the policy, destination, hooks, and lock. <code>undo</code> removes the last Shipgate commit and
-            keeps its changes in the working tree.
+            <code>preview</code> shows what <code>ship</code> would decide without staging anything. <code>status</code> shows the policy,
+            destination, hooks, and lock. <code>undo</code> removes the last Shipgate commit and keeps its changes in the working tree.
           </p>
-          <Command lines={['shipgate status', 'shipgate undo']} />
+          <Command lines={['shipgate preview', 'shipgate status', 'shipgate undo']} />
         </Step>
-        <Step n={6} title="Open this simulator offline">
+        <Step n={6} title="Manage it in the browser">
+          <p>
+            Opens the repository console on 127.0.0.1: status, a preview of what <code>ship</code> would decide, settings, history, and
+            undo, using the same code as the commands above.
+          </p>
+          <Command lines={['shipgate ui']} />
+        </Step>
+        <Step n={7} title="Open this simulator offline">
           <p>Serves the bundled simulator on 127.0.0.1.</p>
           <Command lines={['shipgate demo --serve']} />
         </Step>

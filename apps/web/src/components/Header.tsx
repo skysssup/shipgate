@@ -98,6 +98,7 @@ export function Header({
   onTheme,
   version,
   unsharedEdits,
+  connected = false,
 }: {
   view: View;
   simulatorHref: string;
@@ -105,11 +106,13 @@ export function Header({
   onTheme: (theme: ThemePreference) => void;
   version: string;
   unsharedEdits: boolean;
+  connected?: boolean;
 }) {
   const links: Array<{ view: View; href: string; label: string }> = [
     { view: 'simulator', href: simulatorHref, label: 'Simulator' },
     { view: 'rules', href: '#/rules', label: 'Rules' },
     { view: 'start', href: '#/start', label: 'Get started' },
+    { view: 'repo', href: '#/repo', label: 'Repository' },
   ];
   return (
     <header className="topbar">
@@ -124,6 +127,7 @@ export function Header({
         {links.map((link) => (
           <a key={link.view} href={link.href} className={cx('topnav-link', view === link.view && 'is-active')} aria-current={view === link.view ? 'page' : undefined}>
             {link.label}
+            {link.view === 'repo' && connected && <span className="live-dot" aria-label="(connected)" role="img" />}
           </a>
         ))}
       </nav>

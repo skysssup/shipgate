@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { cliCommands, type Evaluation, type SimState } from '../lib/model';
 import { CopyButton, cx, Section } from './ui';
 
-function outputLine(line: string, index: number): ReactNode {
+export function outputLine(line: string, index: number): ReactNode {
   if (line.startsWith('shipgate:')) {
     const [head, ...rest] = line.split(' — ');
     return (

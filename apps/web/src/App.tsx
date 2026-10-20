@@ -10,12 +10,18 @@ import { useTheme } from './lib/theme';
 import { RulesView } from './views/RulesView';
 import { SimulatorView } from './views/SimulatorView';
 import { StartView } from './views/StartView';
+import { readSession } from './console/api';
+import { DisconnectedView, RepoView } from './console/RepoView';
 
 const TITLES: Record<View, string> = {
   simulator: 'Shipgate policy simulator',
   rules: 'Credential rules and policy · Shipgate',
   start: 'Get started · Shipgate',
+  repo: 'Repository console · Shipgate',
 };
+
+// Present only when the page was served by `shipgate ui`.
+const SESSION = typeof document === 'undefined' ? null : readSession();
 
 export function App() {
   const [view, setView] = useState<View>(() => parseHash(location.hash).view);
@@ -46,7 +52,7 @@ export function App() {
 
   const firstView = useRef(true);
   useEffect(() => {
-    document.title = TITLES[view];
+    document.title = view === 'repo' && SESSION?.repoName ? `${SESSION.repoName} · ${TITLES.repo}` : TITLES[view];
     if (firstView.current) {
       firstView.current = false;
       return;
@@ -84,11 +90,13 @@ export function App() {
           onTheme={setTheme}
           version={pkg.version}
           unsharedEdits={hasUnsharedEdits(state)}
+          connected={SESSION !== null}
         />
         <main id="main" tabIndex={-1} className="main">
           {view === 'simulator' && <SimulatorView state={state} dispatch={dispatch} evaluation={evaluation} />}
           {view === 'rules' && <RulesView onTry={tryRule} />}
           {view === 'start' && <StartView version={pkg.version} />}
+          {view === 'repo' && (SESSION ? <RepoView session={SESSION} /> : <DisconnectedView />)}
         </main>
         {view !== 'simulator' && (
           <footer className="footer">
@@ -98,7 +106,11 @@ export function App() {
             <span aria-hidden>·</span>
             <a href="./third-party-licenses.txt">Third-party licenses</a>
             <span aria-hidden>·</span>
-            <span>The simulator runs the CLI&apos;s decision code in this browser. It never touches a repository.</span>
+            <span>
+              {SESSION && view === 'repo'
+                ? 'The console runs Shipgate commands in this repository through shipgate ui on 127.0.0.1.'
+                : "The simulator runs the CLI's decision code in this browser. It never touches a repository."}
+            </span>
           </footer>
         )}
         <div className="sr-only announcer" aria-live="polite" aria-atomic="true">

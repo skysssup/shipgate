@@ -1,9 +1,9 @@
 import { DEMO_SCENARIOS, SAFETY_LEVELS, type RemoteVisibility, type SafetyLevel } from '@shipgate/core/browser';
 import { MAX_BUSY_AGENTS, defaultReviewDetail, stateFromScenario, type ReviewChoice, type SimState } from './model';
 
-export type View = 'simulator' | 'rules' | 'start';
+export type View = 'simulator' | 'rules' | 'start' | 'repo';
 
-const VIEW_PATHS: Record<View, string> = { simulator: '/', rules: '/rules', start: '/start' };
+const VIEW_PATHS: Record<View, string> = { simulator: '/', rules: '/rules', start: '/start', repo: '/repo' };
 const REMOTES: RemoteVisibility[] = ['private', 'public', 'unknown', 'other-host', 'none'];
 const REVIEWS: ReviewChoice[] = ['off', 'approve', 'hold', 'unavailable'];
 

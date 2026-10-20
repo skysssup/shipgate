@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import { DEMO_SCENARIOS, formatShipResult, planRun, scenarioInput, simulateShip, type RunPlanInput, type RunPlanResult } from '@shipgate/core/browser';
 import { placeFor } from '../src/lib/model';
+import { contrastRatios } from './contrast';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(resolve(here, '../package.json'), 'utf8')) as { version: string };
@@ -326,6 +327,7 @@ test('the get started view gives install commands for this version', async ({ pa
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Use Shipgate in a repository');
   await expect(page.getByText(`releases/download/v${pkg.version}/shipgate-cli-${pkg.version}.tgz`)).toBeVisible();
   await expect(page.getByText('shipgate demo --serve')).toBeVisible();
+  await expect(page.locator('.command-line', { hasText: /^\$ shipgate ui\s*$/ })).toBeVisible();
 });
 
 test('announces decision changes through one polite live region', async ({ page }) => {
@@ -475,51 +477,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
       '#/?example=clean-change&changes=0',
       '#/rules',
       '#/start',
+      '#/repo',
     ];
     for (const view of pages) {
       await page.goto(`./${view}`);
       await page.waitForTimeout(100);
       {
-        const ratios = await page.evaluate(() => {
-          const parse = (c: string): number[] => {
-            const numbers = (c.match(/[\d.]+/g) ?? []).map(Number);
-            return c.startsWith('color(srgb') ? [...numbers.slice(0, 3).map((n) => n * 255), numbers[3] ?? 1] : numbers;
-          };
-          const lum = ([r, g, b]: number[]) => {
-            const f = (v: number) => {
-              const s = v / 255;
-              return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-            };
-            return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-          };
-          const background = (el: Element): number[] => {
-            const layers: number[][] = [];
-            for (let node: Element | null = el; node; node = node.parentElement) {
-              const c = parse(getComputedStyle(node).backgroundColor);
-              if (c.length >= 3 && (c[3] ?? 1) > 0) layers.unshift(c);
-              if (c.length >= 3 && (c[3] ?? 1) === 1) break;
-            }
-            let out = [255, 255, 255];
-            for (const [r, g, b, a = 1] of layers) out = [r * a + out[0] * (1 - a), g * a + out[1] * (1 - a), b * a + out[2] * (1 - a)];
-            return out;
-          };
-          const texts: Element[] = [];
-          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-            const parent = node.parentElement;
-            if (!parent || !node.textContent?.trim() || texts.includes(parent)) continue;
-            const style = getComputedStyle(parent);
-            const box = parent.getBoundingClientRect();
-            if (style.visibility === 'hidden' || box.width <= 1 || box.height <= 1 || parent.closest('[aria-hidden="true"], .sr-only, .cm-placeholder')) continue;
-            texts.push(parent);
-          }
-          return texts.map((el) => {
-            const fg = parse(getComputedStyle(el).color);
-            const bg = background(el);
-            const [l1, l2] = [lum(fg), lum(bg)].sort((a, b) => b - a);
-            return { text: (el.textContent ?? '').trim().slice(0, 40), ratio: (l1 + 0.05) / (l2 + 0.05) };
-          });
-        });
+        const ratios = await contrastRatios(page);
         expect(ratios.length).toBeGreaterThan(10);
         for (const { text, ratio } of ratios) expect(ratio, `${colorScheme} ${view}: "${text}"`).toBeGreaterThanOrEqual(4.5);
       }
