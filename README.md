@@ -50,6 +50,7 @@ cd your-repo
 shipgate on                    # opt in; writes .shipgate.json (policy: balanced)
 shipgate ship -m "Add greet helper"
 shipgate status                # policy, destination, hooks, lock
+shipgate preview               # what ship would decide now; changes nothing
 shipgate undo                  # remove the last Shipgate commit, keep its changes
 shipgate setup                 # optional: run ship after each Claude Code or Cursor turn
 ```
@@ -167,11 +168,13 @@ the rest.
 | `shipgate on [--level strict\|balanced\|yolo] [--agent] [--public-ok] [--model ID] [--account LOGIN] [--key KEY]` | Enable Shipgate in this repository. `--account` is shown by `status` only; it does not select credentials. Prefer `OPENROUTER_API_KEY` over `--key`, which ends up in shell history. |
 | `shipgate off` | Disable it here; settings are kept. |
 | `shipgate ship [-m TEXT] [--prompt TEXT] [--force-secrets] [--public-ok] [--confirm] [--json]` | Stage, scan, decide, commit, and push, as described above. `--hook claude\|cursor` is for the installed agent hooks. |
+| `shipgate preview [-m TEXT] [--prompt TEXT] [--force-secrets] [--public-ok] [--confirm] [--json]` | Show what `ship` would decide right now: the changes it would stage, findings, every check, and the commit subject. Stages into a scratch copy of the index, so the real index, commits, and origin are untouched. External review is reported as pending, not called. Exits 1 only for an invalid `.shipgate.json` or a scan failure. |
 | `shipgate undo [--json]` | Remove the last Shipgate commit; see [Undo](#undo). |
 | `shipgate status [--json]` | Show the configuration (or why it is invalid), destination, busy markers, lock, and hooks. |
 | `shipgate setup` | Install the Claude Code and Cursor stop hooks; see [Agent hooks](#agent-hooks). |
 | `shipgate demo [--json]` | Print the built-in example decisions. |
 | `shipgate demo --serve [--port N]` | Serve the policy simulator on 127.0.0.1 (default port 4173, `0` for any free port). |
+| `shipgate ui [--port N]` | Open the [repository console](#repository-console) for this repository on 127.0.0.1 (default port 4174, `0` for any free port). |
 
 Unknown commands, options, and arguments are errors, with a suggestion when one is close.
 
@@ -322,6 +325,36 @@ requests; opened files stay in the page.
 Open it with `shipgate demo --serve`, or from a source checkout with `npm run dev:web`. Releases
 also include the static build (`shipgate-simulator-<version>.tar.gz`), which works from any path on
 a static web server. There is no hosted copy.
+
+## Repository console
+
+`shipgate ui` serves a local web console for the repository you run it in. It calls the same
+functions as the CLI commands, so every action has a command-line equivalent and produces the
+same report text.
+
+```sh
+cd your-repo
+shipgate ui        # prints http://127.0.0.1:4174/#/repo; open it in a browser, Ctrl+C to stop
+```
+
+The console can ship, undo, change `.shipgate.json`, and install hooks, so it is guarded like a
+local tool with write access:
+
+- It listens on 127.0.0.1 only and answers only requests whose `Host` is `127.0.0.1` or
+  `localhost` on its port, which stops DNS-rebinding pages.
+- Every API call needs a random per-session token that is embedded in the page it serves. Other
+  sites cannot read that page, so they cannot call the API. Writes must be JSON, so a plain
+  cross-site form cannot reach them either.
+- It never accepts or stores the review API key; use `OPENROUTER_API_KEY` or `shipgate on --key`.
+- Commands that touch the repository run one at a time, and `ship` and `undo` take the same
+  worktree lock as the CLI.
+
+API (all JSON, all need the `X-Shipgate-Token` header): `GET /api/session`, `GET /api/status`
+(as `status --json`), `GET /api/history?limit=N` (recent commits, which ones Shipgate made, which
+ones origin has, and whether `undo` applies), `POST /api/preview` and `POST /api/ship` (body:
+`message`, `prompt`, `forceSecrets`, `publicOk`, `confirm`), `POST /api/on` (body: `level`,
+`agentReview`, `publicOk`, `model`, `account`), `POST /api/off`, `POST /api/undo`, and
+`POST /api/setup`. Results include the CLI's report lines in `lines`.
 
 ## Troubleshooting
 

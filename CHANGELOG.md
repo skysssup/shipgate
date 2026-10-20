@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `shipgate preview`: what `ship` would decide right now (changes, findings, checks, commit
+  subject) without staging, committing, or pushing. It stages into a scratch copy of the index.
+- `shipgate ui`: a repository console on 127.0.0.1 with a token-protected JSON API that runs the
+  same functions as `status`, `preview`, `on`, `off`, `ship`, `undo`, and `setup`, plus the recent
+  commit history.
+
 ## 2.2.0 — 2026-10-04
 
 ### Changed

@@ -10,6 +10,8 @@ export interface GitOptions {
   encoding?: 'utf8' | 'latin1';
   /** Keep trailing whitespace, for outputs parsed by byte count. */
   keepTrailing?: boolean;
+  /** Extra environment variables for this command, e.g. GIT_INDEX_FILE for a scratch index. */
+  env?: Record<string, string>;
 }
 
 export interface GitRunner {
@@ -38,7 +40,7 @@ export function createGit(cwd: string = process.cwd()): GitRunner {
           input: opts.input,
           stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
           maxBuffer: 1024 * 1024 * 1024,
-          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...opts.env },
         });
         return opts.keepTrailing ? out : out.trimEnd();
       } catch (err) {

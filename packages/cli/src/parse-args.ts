@@ -14,9 +14,14 @@ const COMMANDS: Record<string, CommandSpec> = {
     flags: { message: 'string', prompt: 'string', 'force-secrets': 'boolean', 'public-ok': 'boolean', confirm: 'boolean', json: 'boolean', hook: 'string' },
     short: { m: 'message' },
   },
+  preview: {
+    flags: { message: 'string', prompt: 'string', 'force-secrets': 'boolean', 'public-ok': 'boolean', confirm: 'boolean', json: 'boolean' },
+    short: { m: 'message' },
+  },
   undo: { flags: { json: 'boolean' } },
   status: { flags: { json: 'boolean' } },
   demo: { flags: { serve: 'boolean', port: 'string', json: 'boolean' } },
+  ui: { flags: { port: 'string' } },
   help: { flags: {} },
 };
 

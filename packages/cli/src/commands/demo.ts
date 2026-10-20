@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEMO_SCENARIOS, planRun, scenarioInput, type RunPlanResult } from '@shipgate/core';
@@ -50,29 +50,53 @@ export function formatDemo(rows: DemoRow[]): string[] {
   ];
 }
 
+/** Send a file from the web build, or index.html for paths without an extension. */
+export function sendStatic(
+  root: string,
+  pathname: string,
+  res: ServerResponse,
+  transformIndex?: (html: string) => string,
+  headers: Record<string, string> = {},
+): void {
+  const base = normalize(root.endsWith(sep) ? root : root + sep);
+  const file = normalize(join(base, pathname === '/' ? 'index.html' : `.${pathname}`));
+  if (!file.startsWith(base)) {
+    res.writeHead(403, headers).end('forbidden');
+    return;
+  }
+  const target = existsSync(file) && statSync(file).isFile() ? file : extname(file) ? null : join(base, 'index.html');
+  if (!target) {
+    res.writeHead(404, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' }).end('not found');
+    return;
+  }
+  const type = MIME[extname(target)] ?? 'application/octet-stream';
+  if (transformIndex && target === join(base, 'index.html')) {
+    res.writeHead(200, { ...headers, 'Content-Type': type, 'Cache-Control': 'no-store' });
+    res.end(transformIndex(readFileSync(target, 'utf8')));
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Content-Type': type, 'Cache-Control': 'no-cache' });
+  res.end(readFileSync(target));
+}
+
+/** Decoded URL path, or null when the request target is malformed. */
+export function requestPath(req: IncomingMessage): string | null {
+  try {
+    return decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
+  } catch {
+    return null;
+  }
+}
+
 /** Serve the simulator on 127.0.0.1. Resolves once listening; rejects if the port is unavailable. */
 export function serveSimulator(dist: string, port: number): Promise<Server> {
-  const root = normalize(dist.endsWith(sep) ? dist : dist + sep);
   const server = createServer((req, res) => {
-    let path = '/';
-    try {
-      path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
-    } catch {
+    const path = requestPath(req);
+    if (path === null) {
       res.writeHead(400).end('bad request');
       return;
     }
-    const file = normalize(join(root, path === '/' ? 'index.html' : `.${path}`));
-    if (!file.startsWith(root)) {
-      res.writeHead(403).end('forbidden');
-      return;
-    }
-    const target = existsSync(file) && statSync(file).isFile() ? file : extname(file) ? null : join(root, 'index.html');
-    if (!target) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('not found');
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': MIME[extname(target)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
-    res.end(readFileSync(target));
+    sendStatic(dist, path, res);
   });
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);

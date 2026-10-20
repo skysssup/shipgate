@@ -48,6 +48,18 @@ $ git status --short`,
     next: 'Remove the key and keep `.env` out of Git (add it to `.gitignore`). Use `--force-secrets` only for a value you know is not a real credential.',
   },
   {
+    id: 'preview-before-ship',
+    title: 'Preview shows the decision without staging anything',
+    facts: ['Policy: balanced.', 'A new source file and a `.env` file with a synthetic key.', '`shipgate preview` runs the same checks as `ship` on a scratch copy of the index.'],
+    script: `key="sk-proj-$(printf 'demo%.0s' 1 2 3 4 5 6)"
+echo "OPENAI_API_KEY=$key" > .env
+printf 'export const greet = (name) => "Hello, " + name;\\n' > greet.js
+$ shipgate preview
+$ git status --short`,
+    expect: [[0, /^shipgate: PREVIEW \(ship would BLOCK\) — Credential findings block this run\.$/m], [0, /^\?\? \.env\n\?\? greet\.js$/m]],
+    next: 'Remove the key (or move it out of the repository), then run `shipgate preview` again before `shipgate ship`.',
+  },
+  {
     id: 'placeholder-template',
     title: 'Placeholder values in a template are accepted',
     facts: ['Policy: balanced.', '`.env.example` documents settings with placeholder values.', 'Template contents are scanned; the template filename itself is not a finding.'],

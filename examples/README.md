@@ -76,6 +76,41 @@ $ git status --short
 
 **Next:** Remove the key and keep `.env` out of Git (add it to `.gitignore`). Use `--force-secrets` only for a value you know is not a real credential.
 
+## Preview shows the decision without staging anything
+
+- Policy: balanced.
+- A new source file and a `.env` file with a synthetic key.
+- `shipgate preview` runs the same checks as `ship` on a scratch copy of the index.
+
+```sh
+key="sk-proj-$(printf 'demo%.0s' 1 2 3 4 5 6)"
+echo "OPENAI_API_KEY=$key" > .env
+printf 'export const greet = (name) => "Hello, " + name;\n' > greet.js
+shipgate preview
+git status --short
+```
+
+```console
+$ shipgate preview
+shipgate: PREVIEW (ship would BLOCK) — Credential findings block this run.
+  change   A .env
+  change   A greet.js
+  finding  .env:1  openai-key (high)  sk-proj-…demo
+  finding  .env  dotenv-file (high)
+  reason   2 high-confidence credential findings: balanced blocks every finding.
+  remote   ../origin.git (not GitHub; visibility not checked)
+  next     Remove the credential and keep .env files out of Git (.gitignore), or rerun with --force-secrets if it is a false positive.
+  result   Preview only: nothing was staged, committed, or pushed.
+```
+
+```console
+$ git status --short
+?? .env
+?? greet.js
+```
+
+**Next:** Remove the key (or move it out of the repository), then run `shipgate preview` again before `shipgate ship`.
+
 ## Placeholder values in a template are accepted
 
 - Policy: balanced.
