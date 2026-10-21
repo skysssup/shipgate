@@ -222,3 +222,18 @@ export function filterCommits<T extends { sha: string; subject: string; author: 
     return terms.every((t) => text.includes(t) || (t.length >= 4 && sha.startsWith(t)));
   });
 }
+
+/** Quiet time after typing in -m or --prompt before the preview runs again. */
+export const PREVIEW_TYPING_DELAY = 350;
+
+/**
+ * How long to wait before re-running the preview after the run options change. Text fields
+ * wait for a pause in typing: at 120 to 320ms between keys, 350ms sends one preview per burst
+ * rather than one per key, and each preview is a full scan queued behind the others on the
+ * server (about 180ms for 700 changed files, 340ms for 5,000). A flag is one discrete click, so
+ * waiting would only add latency: it runs at once.
+ */
+export function previewDelay(previous: RunOptions, next: RunOptions): number {
+  const typed = (previous.message ?? '') !== (next.message ?? '') || (previous.prompt ?? '') !== (next.prompt ?? '');
+  return typed ? PREVIEW_TYPING_DELAY : 0;
+}

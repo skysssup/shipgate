@@ -360,6 +360,33 @@ test('a long history can be filtered and extended with Show more', async ({ page
   await expect(rows).toHaveCount(41);
 });
 
+test('a run flag re-runs the preview at once; typing waits for a pause', async ({ page, repo }) => {
+  await page.clock.install();
+  await page.goto(repo.url);
+  await enable(page);
+  repo.write('notes.md', 'hello\n');
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByRole('button', { name: 'Ship…' })).toBeEnabled();
+  let previews = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/preview')) previews += 1;
+  });
+
+  // Freeze the page's timers, so only an immediate preview can be sent.
+  await page.clock.pauseAt(Date.now() + 1000);
+  await page.getByRole('button', { name: '--confirm', exact: true }).click();
+  await expect.poll(() => previews).toBe(1);
+  await expect(section(page, 'Preview and ship').locator('.section-meta')).toHaveText('shipgate preview --confirm');
+
+  await page.getByLabel(/Commit message/).fill('Add notes');
+  await page.clock.runFor(349);
+  await page.waitForTimeout(200);
+  expect(previews).toBe(1);
+  await page.clock.runFor(1);
+  await expect.poll(() => previews).toBe(2);
+  await expect(verdict(page)).toContainText('allows this run');
+});
+
 test('Ship keeps focus while the preview refreshes and opens once it is current', async ({ page, repo }) => {
   await page.goto(repo.url);
   await enable(page);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeCounts, filterChanges, filterCommits, nextHistoryLimit, splitPath } from '../src/console/model';
+import { changeCounts, filterChanges, filterCommits, nextHistoryLimit, PREVIEW_TYPING_DELAY, previewDelay, splitPath } from '../src/console/model';
 
 const changes = [
   { path: 'src/app.ts', status: 'M' },
@@ -99,5 +99,20 @@ describe('filterCommits', () => {
   });
   it('requires every term', () => {
     expect(filterCommits(commits, 'ada merge').map((c) => c.sha)).toEqual(['0123abcdddd']);
+  });
+});
+
+describe('previewDelay', () => {
+  it('waits for a pause after typing a message or task description', () => {
+    expect(previewDelay({}, { message: 'F' })).toBe(PREVIEW_TYPING_DELAY);
+    expect(previewDelay({ message: 'Fix' }, { message: 'Fi' })).toBe(PREVIEW_TYPING_DELAY);
+    expect(previewDelay({ prompt: 'a' }, { prompt: 'ab', confirm: true })).toBe(PREVIEW_TYPING_DELAY);
+  });
+  it('runs a flag change at once', () => {
+    expect(previewDelay({ message: 'Fix' }, { message: 'Fix', forceSecrets: true })).toBe(0);
+    expect(previewDelay({ publicOk: true }, {})).toBe(0);
+  });
+  it('treats a missing field like an empty one', () => {
+    expect(previewDelay({ message: '' }, { confirm: true })).toBe(0);
   });
 });

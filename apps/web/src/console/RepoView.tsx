@@ -38,6 +38,7 @@ import {
   lockSummary,
   onCommand,
   policySummary,
+  previewDelay,
   relativeTime,
   runCommand,
   sameDraft,
@@ -787,15 +788,18 @@ export function RepoView({ session }: { session: ConsoleSession }) {
   const [pending, setPending] = useState<Pending>(null);
   const [announcement, setAnnouncement] = useState('');
 
-  // Re-run the preview shortly after the run options change.
-  const first = useRef(true);
+  // Re-run the preview when the run options change: at once for a flag, after a pause in typing for text.
+  const previous = useRef(options);
   const { loadPreview } = c;
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
+    if (previous.current === options) return;
+    const delay = previewDelay(previous.current, options);
+    previous.current = options;
+    if (!delay) {
+      void loadPreview();
       return;
     }
-    const timer = window.setTimeout(() => void loadPreview(), 350);
+    const timer = window.setTimeout(() => void loadPreview(), delay);
     return () => window.clearTimeout(timer);
   }, [options, loadPreview]);
 
