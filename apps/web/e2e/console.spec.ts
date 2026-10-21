@@ -489,3 +489,63 @@ test.describe('accessibility (axe)', () => {
     });
   }
 });
+
+test('confirmation dialogs move, trap, and return focus', async ({ page, repo }) => {
+  await page.goto(repo.url);
+  await enable(page);
+  repo.write('notes.md', 'hello\n');
+  await page.getByLabel(/Commit message/).fill('Add notes');
+  await expect(section(page, 'Preview and ship')).toContainText('Commit subject: Add notes');
+  await expect(page.getByRole('button', { name: 'Ship…' })).toBeEnabled();
+  /** The focused element: its button text when it is a button, else its tag, and whether an open dialog contains it. */
+  const focused = () => page.evaluate(() => {
+    const el = document.activeElement;
+    return { inside: Boolean(el?.closest('dialog[open]')), name: el instanceof HTMLButtonElement ? el.textContent!.trim() : el?.tagName ?? null };
+  });
+
+  const cases = [
+    { trigger: page.getByRole('button', { name: 'Ship…' }), name: 'Ship these changes?', confirm: 'Ship' },
+    { trigger: section(page, 'Settings').getByRole('button', { name: 'Disable…' }), name: 'Disable Shipgate here?', confirm: 'Disable' },
+    { trigger: card(page, 'Agent hooks').getByRole('button', { name: 'Install hooks…' }), name: 'Install agent hooks?', confirm: 'Install hooks' },
+  ];
+  for (const { trigger, name, confirm } of cases) {
+    // Open from the keyboard, as a keyboard user would.
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name });
+    await expect(dialog).toBeVisible();
+    // 1. Focus moves into the dialog, onto Cancel.
+    expect(await focused(), name).toEqual({ inside: true, name: 'Cancel' });
+    // 2. Tab and Shift+Tab cycle between the dialog's two buttons and never leave it.
+    const order: string[] = [];
+    for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key);
+      const now = await focused();
+      expect(now.inside, `${name}: ${key} moved focus to ${now.name}`).toBe(true);
+      order.push(now.name!);
+    }
+    expect(order, name).toEqual([confirm, 'Cancel', confirm, 'Cancel', confirm, 'Cancel']);
+    // 3. Escape closes it without running the command.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    // 4. Focus returns to the button that opened it.
+    await expect(trigger).toBeFocused();
+  }
+  expect(repo.git('log', '--oneline').split('\n')).toHaveLength(1);
+  expect(JSON.parse(readFileSync(join(repo.dir, '.shipgate.json'), 'utf8')).enabled).toBe(true);
+  expect(existsSync(join(repo.sandbox, 'cursor', 'hooks.json'))).toBe(false);
+
+  // Cancel and a click on the backdrop also return focus to the trigger.
+  const ship = page.getByRole('button', { name: 'Ship…' });
+  const dialog = page.getByRole('dialog', { name: 'Ship these changes?' });
+  await ship.click();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(ship).toBeFocused();
+  await ship.click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(4, 4);
+  await expect(dialog).toBeHidden();
+  await expect(ship).toBeFocused();
+  expect(repo.git('log', '--oneline').split('\n')).toHaveLength(1);
+});

@@ -25,6 +25,9 @@
 
 ### Fixed
 
+- Console confirmation dialogs keep Tab and Shift+Tab on their buttons. Chromium let focus
+  leave a modal dialog for the browser UI and Firefox stopped on the dialog element itself; an
+  e2e test now checks that focus moves in, stays in, closes on Escape, and returns to the trigger.
 - The output panels in the console and simulator have `role="region"`, so their `aria-label` is
   exposed (axe: `aria-prohibited-attr`).
 

@@ -381,8 +381,9 @@ shipgate ui        # prints http://127.0.0.1:4174/#/repo; open it in a browser, 
 - **History**: recent commits on the branch, which ones Shipgate made, and whether origin has
   them. **Undo last ship…** appears when `undo` applies to HEAD.
 - Loading, empty, and error states for each panel; data already shown stays visible if a refresh
-  fails, with the reason. Works from 360 px wide, with the keyboard alone (dialogs trap focus and
-  start on Cancel; Escape closes them), with screen readers (results are announced), and in light
+  fails, with the reason. Works from 360 px wide, with the keyboard alone (dialogs move focus to
+  Cancel, keep Tab and Shift+Tab inside, close on Escape, and return focus to the button that
+  opened them), with screen readers (results are announced), and in light
   and dark themes.
 
 Opened from the static simulator build or `shipgate demo --serve`, the Repository tab explains how
