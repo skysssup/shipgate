@@ -638,6 +638,17 @@ export function RepoView({ session }: { session: ConsoleSession }) {
   const status = c.status.data;
   const loading = c.status.loading || c.history.loading || c.preview.loading;
   const shipCommandText = runCommand('ship', options);
+  const shipBlocked = !readiness.allowed || c.busy !== null;
+  const shipDisabled = shipBlocked || c.preview.loading;
+
+  // Ship stays focusable while the preview refreshes (aria-disabled, not disabled), so focus
+  // is not dropped mid-refresh. Pressing it then opens the dialog once the fresh preview allows it.
+  const [shipWhenReady, setShipWhenReady] = useState(false);
+  useEffect(() => {
+    if (!shipWhenReady || c.preview.loading) return;
+    setShipWhenReady(false);
+    if (!shipBlocked) setPending('ship');
+  }, [shipWhenReady, c.preview.loading, shipBlocked]);
 
   const confirm = () => {
     const what = pending;
@@ -689,9 +700,12 @@ export function RepoView({ session }: { session: ConsoleSession }) {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!readiness.allowed || c.busy !== null || c.preview.loading}
+                aria-disabled={shipDisabled}
                 aria-describedby="ship-reason"
-                onClick={() => setPending('ship')}
+                onClick={() => {
+                  if (c.preview.loading && c.busy === null) setShipWhenReady(true);
+                  else if (!shipBlocked) setPending('ship');
+                }}
               >
                 <Rocket size={14} aria-hidden />
                 {c.busy === 'ship' ? 'Shipping…' : 'Ship…'}

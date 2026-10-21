@@ -287,6 +287,31 @@ test('works with the keyboard alone', async ({ page, repo }) => {
   await expect(page.locator('.console-announcer')).toContainText('shipgate ship -m "Add notes"');
 });
 
+test('Ship keeps focus while the preview refreshes and opens once it is current', async ({ page, repo }) => {
+  await page.goto(repo.url);
+  await enable(page);
+  repo.write('notes.md', 'hello\n');
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  const ship = page.getByRole('button', { name: 'Ship…' });
+  await expect(ship).toBeEnabled();
+  // Hold each preview response so the refresh is still running when Ship is pressed.
+  await page.route('**/api/preview', async (route) => {
+    await new Promise((r) => setTimeout(r, 800));
+    await route.continue();
+  });
+  await page.getByLabel(/Commit message/).fill('Add notes');
+  await expect(ship).toHaveAttribute('aria-disabled', 'true');
+  await ship.focus();
+  await page.keyboard.press('Enter');
+  await expect(ship).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'Ship these changes?' })).toBeHidden();
+  const dialog = page.getByRole('dialog', { name: 'Ship these changes?' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('$ shipgate ship -m "Add notes"');
+  await page.keyboard.press('Escape');
+  expect(repo.git('log', '--oneline').split('\n')).toHaveLength(1);
+});
+
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`console text meets WCAG AA contrast in the ${colorScheme} theme`, async ({ page, repo }) => {
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
