@@ -306,7 +306,7 @@ function ChangeList({ changes }: { changes: Change[] }) {
         </div>
       )}
       {visible.length ? (
-        <ul className="change-list" aria-label={narrowed ? `Changed paths matching the filter` : 'Changed paths'}>
+        <ul className="change-list" aria-label={narrowed ? 'Changed paths matching the filter' : 'Changed paths'}>
           {visible.map((change) => {
             const { dir, name } = splitPath(change.path);
             return (
@@ -647,6 +647,18 @@ function SettingsForm({ status, busy, onSave, onDisable }: { status: StatusRepor
   );
 }
 
+function CommitTime({ iso, now }: { iso: string; now: number }) {
+  return (
+    <time dateTime={iso} title={new Date(iso).toLocaleString()}>
+      {relativeTime(iso, now)}
+    </time>
+  );
+}
+
+function OriginLabel({ onOrigin }: { onOrigin: boolean | null }) {
+  return onOrigin === null ? <span className="muted">no tracking ref</span> : onOrigin ? <>pushed</> : <strong>local only</strong>;
+}
+
 function HistoryTable({
   history,
   onUndo,
@@ -744,14 +756,23 @@ function HistoryTable({
                       {c.shipgate && <span className="badge tone-ship">Shipgate</span>}
                       {c.merge && <span className="badge tone-noop">Merge</span>}
                     </span>
-                    <span className="muted history-author">{c.author}</span>
+                    <span className="muted history-author">
+                      {c.author}
+                      {/* Narrow screens hide the When and Origin columns and show them here instead. */}
+                      <span className="history-inline">
+                        {' · '}
+                        <CommitTime iso={c.date} now={now} />
+                        {' · '}
+                        <OriginLabel onOrigin={c.onOrigin} />
+                      </span>
+                    </span>
                   </td>
                   <td>
-                    <time dateTime={c.date} title={new Date(c.date).toLocaleString()}>
-                      {relativeTime(c.date, now)}
-                    </time>
+                    <CommitTime iso={c.date} now={now} />
                   </td>
-                  <td>{c.onOrigin === null ? <span className="muted">no tracking ref</span> : c.onOrigin ? 'pushed' : <strong>local only</strong>}</td>
+                  <td>
+                    <OriginLabel onOrigin={c.onOrigin} />
+                  </td>
                 </tr>
               ))}
             </tbody>

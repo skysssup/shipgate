@@ -447,6 +447,43 @@ test('a long change list scrolls inside its box instead of stretching the page',
   expect(pageHeight).toBeLessThanOrEqual(contentBottom + 2);
 });
 
+test('the console layout adapts between a phone and a desktop', async ({ page, repo }) => {
+  repo.write('a/very/long/path/that/keeps/going/and/going/without/any/breaks/file-name-that-is-long.txt', 'x\n');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(repo.url);
+  const preview = section(page, 'Preview and ship');
+  const changes = preview.getByRole('region', { name: /Changes/ });
+  const findings = preview.getByRole('region', { name: /Findings/ });
+  const history = section(page, 'History');
+  const top = async (locator: ReturnType<Page['locator']>) => (await locator.boundingBox())!.y;
+  await expect(changes).toContainText('file-name-that-is-long.txt');
+
+  // Desktop: changes and findings side by side, history in four columns.
+  expect(Math.abs((await top(changes)) - (await top(findings)))).toBeLessThan(2);
+  await expect(history.getByRole('columnheader', { name: 'Origin' })).toBeVisible();
+  await expect(history.locator('.history-inline')).toBeHidden();
+
+  // Each change is one line: the directory is cut short and the file name stays whole.
+  const row = changes.locator('.change').first();
+  const dir = row.locator('.change-dir');
+  expect(await dir.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  expect((await row.boundingBox())!.height).toBeLessThan(40);
+  await expect(row.locator('.change-name')).toHaveText('file-name-that-is-long.txt');
+  await expect(row).toHaveAttribute('title', /^a\/very\/long\/path\/.*file-name-that-is-long\.txt$/);
+
+  // Phone: findings below changes, status cards two across, When and Origin folded under the subject.
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(await top(findings)).toBeGreaterThan((await top(changes)) + 40);
+  expect(Math.abs((await top(card(page, 'Branch'))) - (await top(card(page, 'Policy'))))).toBeLessThan(2);
+  await expect(history.getByRole('columnheader', { name: 'Origin' })).toBeHidden();
+  await expect(history.locator('.history-inline').first()).toBeVisible();
+  await expect(history.locator('.history-inline').first()).toContainText(/just now|ago · pushed/);
+  const sha = history.locator('tbody th code').first();
+  expect((await sha.boundingBox())!.height).toBeLessThan(24);
+  const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+});
+
 test.describe('static build', () => {
   test('without shipgate ui, the Repository view explains how to start it', async ({ page }) => {
     await page.goto('./#/repo');

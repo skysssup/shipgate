@@ -3113,10 +3113,21 @@ details[open] > summary .chevron {
   border-left-color: var(--accent);
 }
 
+.ship-preview {
+  container-type: inline-size;
+}
+
+/* Changes and findings sit side by side only when the preview panel itself is wide enough. */
 .preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.9rem;
+}
+
+@container (min-width: 44rem) {
+  .preview-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
 }
 
 .subsection {
@@ -3185,16 +3196,25 @@ details[open] > summary .chevron {
   font-size: var(--text-xs);
 }
 
+/* One line per path: the directory gives way first (like .file-tab-dir), the name wraps only if it must. */
 .change-path {
+  display: flex;
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .change-dir {
+  flex: 0 1 auto;
+  min-width: 2ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-3);
 }
 
 .change-name {
+  flex: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--text);
 }
 
@@ -3339,6 +3359,18 @@ details[open] > summary .chevron {
   margin-top: 0.6rem;
 }
 
+.history-tools .search-field {
+  max-width: 24rem;
+}
+
+.history-table tbody th code {
+  white-space: nowrap;
+}
+
+.history-inline {
+  display: none;
+}
+
 .history-subject {
   display: flex;
   flex-wrap: wrap;
@@ -3457,9 +3489,33 @@ details[open] > summary .chevron {
   }
 }
 
+@media (max-width: 560px) {
+  .history-table tr > :nth-child(3),
+  .history-table tr > :nth-child(4) {
+    display: none;
+  }
+
+  .history-inline {
+    display: inline;
+  }
+}
+
 @media (max-width: 480px) {
   .repo-page {
     padding: 1.5rem 0.9rem 2.5rem;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  .card {
+    padding: 0.7rem 0.8rem;
+  }
+
+  .cards > .card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   .ship-options,
