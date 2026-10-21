@@ -541,6 +541,34 @@ test.describe('accessibility (axe)', () => {
       for (const { text, ratio } of ratios) expect(ratio, `${colorScheme} dialog: "${text}"`).toBeGreaterThanOrEqual(4.5);
     });
 
+    test(`#/repo with long, filtered lists has no axe violations in the ${colorScheme} theme`, async ({ page, repo }) => {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      for (let i = 1; i <= 35; i += 1) repo.git('commit', '--quiet', '--allow-empty', '-m', `Change ${i}`);
+      for (let i = 0; i < 120; i += 1) repo.write(`src/deeply/nested/module-${i}/index.ts`, `export const v = ${i};\n`);
+      repo.write('README.md', 'changed\n');
+      await page.goto(repo.url);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+      const changes = section(page, 'Preview and ship').getByRole('region', { name: /Changes/ });
+      await expect(changes.getByRole('button', { name: 'Show 21 more' })).toBeVisible();
+      await changes.getByLabel('Filter changed paths').fill('module-1');
+      await changes.getByRole('radio', { name: 'Added 120' }).click();
+      const history = section(page, 'History');
+      await expect(history.getByRole('button', { name: 'Show 30 more' })).toBeVisible();
+      await history.getByLabel(/Filter commits/).fill('change');
+      // Rows scrolled out of the change list's own box can't be measured by axe (it reports them
+      // as partially obscured); the contrast helper below measures every row instead.
+      const clippedRows = (r: Result) => r.id === 'color-contrast' && r.nodes.every((n) => String(n.target).startsWith('.change:'));
+      for (const width of [1280, 360]) {
+        await page.setViewportSize({ width, height: 900 });
+        // At the top, so the sticky top bar covers nothing axe measures.
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const results = await scan(page);
+        expect(describe(results.violations), `${colorScheme} ${width}px: violations`).toEqual([]);
+        expect(describe(results.incomplete.filter((r) => !clippedRows(r))), `${colorScheme} ${width}px: needs review`).toEqual([]);
+        for (const { text, ratio } of await contrastRatios(page)) expect(ratio, `${colorScheme} ${width}px: "${text}"`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
     test(`#/repo without shipgate ui has no axe violations in the ${colorScheme} theme`, async ({ page }) => {
       await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
       await page.goto('./#/repo');

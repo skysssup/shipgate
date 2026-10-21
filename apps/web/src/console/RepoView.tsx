@@ -306,7 +306,8 @@ function ChangeList({ changes }: { changes: Change[] }) {
         </div>
       )}
       {visible.length ? (
-        <ul className="change-list" aria-label={narrowed ? 'Changed paths matching the filter' : 'Changed paths'}>
+        // Focusable once it can scroll, so keyboard users can scroll it too.
+        <ul className="change-list" aria-label={narrowed ? 'Changed paths matching the filter' : 'Changed paths'} tabIndex={visible.length > 6 ? 0 : undefined}>
           {visible.map((change) => {
             const { dir, name } = splitPath(change.path);
             return (
