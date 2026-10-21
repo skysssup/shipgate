@@ -173,6 +173,7 @@ the rest.
 | `shipgate preview [-m TEXT] [--prompt TEXT] [--force-secrets] [--public-ok] [--confirm] [--json]` | Show what `ship` would decide right now: the changes it would stage, findings, every check, and the commit subject. Stages into a scratch copy of the index, so the real index, commits, and origin are untouched. External review is reported as pending, not called. Exits 1 only for an invalid `.shipgate.json` or a scan failure. |
 | `shipgate undo [--json]` | Remove the last Shipgate commit; see [Undo](#undo). |
 | `shipgate status [--json]` | Show the configuration (or why it is invalid), destination, busy markers, lock, and hooks. |
+| `shipgate history [--json] [--limit N]` | List recent commits on the branch (default 30, at most 200), marking Shipgate commits, whether origin has them, and whether `undo` applies; see [History](#history). |
 | `shipgate setup` | Install the Claude Code and Cursor stop hooks; see [Agent hooks](#agent-hooks). |
 | `shipgate demo [--json]` | Print the built-in example decisions. |
 | `shipgate demo --serve [--port N]` | Serve the policy simulator on 127.0.0.1 (default port 4173, `0` for any free port). |
@@ -182,7 +183,7 @@ Unknown commands, options, and arguments are errors, with a suggestion when one 
 
 ### Output and exit status
 
-Progress and results go to stderr, so hooks can discard stdout. `status`, `demo`, `--help`,
+Progress and results go to stderr, so hooks can discard stdout. `status`, `history`, `demo`, `--help`,
 `--version`, and `--json` output go to stdout. The `--json` result of `ship` has `outcome` (for
 example `pushed`, `committed`, `push-failed`, `blocked`), `committed`, `pushed`, `findings`,
 `reasons`, `warnings`, and `exitCode`.
@@ -234,6 +235,30 @@ changes stay in the working tree as unstaged edits. Nothing changes unless every
 - If origin has newer commits on top, undo refuses and suggests `git revert`.
 - If origin never had the commit (for example the push failed), only the local branch is reset.
 - If origin cannot be reached, undo refuses, because it cannot tell whether the commit was pushed.
+
+## History
+
+`shipgate history` lists recent commits on the current branch, newest first: the short SHA, the
+author date, whether origin has the commit, the subject (marked `[shipgate]` when the message
+carries the `Shipped-by: shipgate` trailer, `[merge]` for merges), and the author. The last line
+says whether `shipgate undo` applies to HEAD.
+
+```text
+$ shipgate history --limit 3
+History of branch main, newest first (origin state from refs/remotes/origin/main as of the last fetch or push)
+  4b1f0c2  2026-10-21 19:29  local only       Add greet helper [shipgate] (Sky)
+  9e03a7d  2026-10-21 18:02  pushed           Fix README typo (Sky)
+  1c5d8e4  2026-10-20 11:40  pushed           Initial commit (Sky)
+undo: HEAD 4b1f0c2 is a Shipgate commit; shipgate undo would remove it from this branch and keep its changes in the working tree
+```
+
+"pushed" and "local only" come from `refs/remotes/origin/<branch>` as of the last fetch or push;
+history never contacts origin. Without a remote-tracking ref each commit says `no tracking ref`.
+`--limit N` takes 1 to 200 (default 30). `--json` prints the same report as the console's
+`GET /api/history`: `inGitRepo`, `branch`, `originRef`, `undoCandidate`, and `commits` (each with
+`sha`, `shortSha`, `subject`, `author`, `date`, `shipgate`, `merge`, and `onOrigin`, which is
+`null` without a tracking ref). It exits 0, including outside a Git repository
+(`"inGitRepo": false`), and 1 only for usage errors.
 
 ## Agent hooks
 
@@ -376,7 +401,7 @@ local tool with write access:
   worktree lock as the CLI.
 
 API (all JSON, all need the `X-Shipgate-Token` header): `GET /api/session`, `GET /api/status`
-(as `status --json`), `GET /api/history?limit=N` (recent commits, which ones Shipgate made, which
+(as `status --json`), `GET /api/history?limit=N` (as `history --json --limit N`: recent commits, which ones Shipgate made, which
 ones origin has, and whether `undo` applies), `POST /api/preview` and `POST /api/ship` (body:
 `message`, `prompt`, `forceSecrets`, `publicOk`, `confirm`), `POST /api/on` (body: `level`,
 `agentReview`, `publicOk`, `model`, `account`), `POST /api/off`, `POST /api/undo`, and

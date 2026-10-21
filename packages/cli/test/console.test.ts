@@ -57,6 +57,16 @@ const api = (s: ConsoleServer, method: string, path: string, body?: unknown) =>
   });
 
 describe('repository console server', () => {
+  it('serves the same history as shipgate history --json', async () => {
+    const r = repo();
+    addOrigin(r);
+    r.write('a.txt', 'a\n');
+    r.git('add', 'a.txt');
+    r.git('commit', '--quiet', '-m', 'Local a');
+    const s = await start(r.dir);
+    expect((await api(s, 'GET', '/api/history?limit=7')).json()).toEqual(JSON.parse(cli(r.dir, ['history', '--json', '--limit', '7']).stdout));
+  });
+
   it('embeds the session token in the page and serves assets', async () => {
     const s = await start(repo().dir);
     const page = await send(s, 'GET', '/');

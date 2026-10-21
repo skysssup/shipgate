@@ -4,6 +4,9 @@
 
 ### Added
 
+- `shipgate history [--json] [--limit N]`: recent commits on the branch, which ones Shipgate made,
+  which ones origin has, and whether `undo` applies. The same report as the console's
+  `GET /api/history`.
 - `shipgate preview`: what `ship` would decide right now (changes, findings, checks, commit
   subject) without staging, committing, or pushing. It stages into a scratch copy of the index.
 - `shipgate ui`: a repository console on 127.0.0.1 with a token-protected JSON API that runs the

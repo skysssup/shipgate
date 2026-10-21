@@ -20,6 +20,7 @@ const COMMANDS: Record<string, CommandSpec> = {
   },
   undo: { flags: { json: 'boolean' } },
   status: { flags: { json: 'boolean' } },
+  history: { flags: { json: 'boolean', limit: 'string' } },
   demo: { flags: { serve: 'boolean', port: 'string', json: 'boolean' } },
   ui: { flags: { port: 'string' } },
   help: { flags: {} },

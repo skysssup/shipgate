@@ -68,3 +68,28 @@ export function shipHistory(opts: { cwd?: string; limit?: number; git?: GitRunne
   report.undoCandidate = Boolean(info.branch && head?.shipgate && !head.merge && headParents === 1);
   return report;
 }
+
+/** `YYYY-MM-DD HH:MM` in the author's own time zone, from git's ISO 8601 date. */
+function shortDate(iso: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(iso);
+  return match ? `${match[1]} ${match[2]}` : iso;
+}
+
+/** The human report for `shipgate history`: one line per commit, newest first. */
+export function formatHistory(report: HistoryReport): string[] {
+  if (!report.inGitRepo) return ['shipgate: not inside a Git repository'];
+  const where = report.branch ? `branch ${report.branch}` : 'detached HEAD';
+  if (!report.commits.length) return [`History of ${where}: no commits yet`];
+  const lines = [`History of ${where}, newest first${report.originRef ? ` (origin state from ${report.originRef} as of the last fetch or push)` : ' (no remote-tracking ref for origin)'}`];
+  const width = Math.max(...report.commits.map((c) => c.shortSha.length));
+  for (const c of report.commits) {
+    const origin = c.onOrigin === null ? 'no tracking ref' : c.onOrigin ? 'pushed' : 'local only';
+    const marks = [c.shipgate ? '[shipgate]' : '', c.merge ? '[merge]' : ''].filter(Boolean).join(' ');
+    lines.push(`  ${c.shortSha.padEnd(width)}  ${shortDate(c.date)}  ${origin.padEnd(15)}  ${c.subject}${marks ? ` ${marks}` : ''} (${c.author})`);
+  }
+  const head = report.commits[0];
+  lines.push(report.undoCandidate
+    ? `undo: HEAD ${head.shortSha} is a Shipgate commit; shipgate undo would remove it ${head.onOrigin ? 'locally and from origin' : 'from this branch'} and keep its changes in the working tree`
+    : 'undo: does not apply (HEAD is not a non-merge Shipgate commit with a parent on a branch)');
+  return lines;
+}

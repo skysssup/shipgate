@@ -7,5 +7,5 @@ export { demoRows, formatDemo } from './commands/demo.js';
 export { parseArgs } from './parse-args.js';
 export { VERSION } from './version.js';
 export { runPreview, formatPreview, type PreviewResult, type PreviewOptions } from './commands/preview.js';
-export { shipHistory, type HistoryReport, type HistoryCommit } from './commands/history.js';
+export { shipHistory, formatHistory, type HistoryReport, type HistoryCommit } from './commands/history.js';
 export { serveConsole, type ConsoleOptions, type ConsoleServer } from './commands/console.js';

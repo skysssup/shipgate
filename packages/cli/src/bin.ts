@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { formatHistory, shipHistory } from './commands/history.js';
 import { demoRows, findWebDist, formatDemo, serveSimulator } from './commands/demo.js';
 import { serveConsole } from './commands/console.js';
 import { runOff, runOn } from './commands/on-off.js';
@@ -26,6 +27,8 @@ Commands:
   undo     Remove the last Shipgate commit locally and from origin;
            its changes stay in the working tree
   status   Show policy, destination, hooks, busy markers, and lock state
+  history  List recent commits on the branch, marking Shipgate commits, what
+           origin has, and whether undo applies
   setup    Install Claude Code and Cursor stop hooks that run shipgate ship
   demo     Print example decisions; --serve opens the policy simulator
   ui       Open the repository console on 127.0.0.1: status, preview, settings,
@@ -54,6 +57,8 @@ ship options:
 preview options: -m, --prompt, --force-secrets, --public-ok, --confirm, --json
                                  As for ship; nothing is staged, committed, or pushed
 status, undo: --json             Print the result as JSON on stdout
+history: --json                  Print the result as JSON on stdout
+         --limit N               Number of commits, 1 to 200 (default 30)
 demo: --serve [--port N]         Serve the simulator on 127.0.0.1 (default port 4173; 0 picks one)
       --json                     Print the example decisions as JSON
 ui: --port N                     Port for the console on 127.0.0.1 (default 4174; 0 picks one)
@@ -61,7 +66,7 @@ ui: --port N                     Port for the console on 127.0.0.1 (default 4174
 Exit status: 0 when the command did what it reports, including policy blocks and
 holds that need no repair; 1 for errors and for results that need attention (invalid
 configuration, failed review, commit, or push). Shipgate never exits 2.
-Messages go to stderr; status, demo, --help, --version, and --json write to stdout.
+Messages go to stderr; status, history, demo, --help, --version, and --json write to stdout.
 `;
 
 function parsePort(text: string): number {
@@ -163,6 +168,14 @@ async function main(): Promise<number> {
     case 'status': {
       const report = gatherStatus();
       process.stdout.write(flags.json ? `${JSON.stringify(report, null, 2)}\n` : `${formatStatus(report).join('\n')}\n`);
+      return 0;
+    }
+    case 'history': {
+      const limitText = flagString(flags, 'limit');
+      const limit = limitText === undefined ? 30 : Number(limitText);
+      if (!/^\d+$/.test(limitText ?? '30') || !Number.isInteger(limit) || limit < 1 || limit > 200) throw new UsageError('--limit expects a number from 1 to 200');
+      const report = shipHistory({ limit });
+      process.stdout.write(flags.json ? `${JSON.stringify(report, null, 2)}\n` : `${formatHistory(report).join('\n')}\n`);
       return 0;
     }
     case 'demo': {
