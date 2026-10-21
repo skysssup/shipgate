@@ -267,6 +267,10 @@ test('works with the keyboard alone', async ({ page, repo }) => {
   await expect(page.getByRole('button', { name: 'Ship…' })).toBeEnabled();
   await page.getByLabel(/Commit message/).focus();
   await page.keyboard.type('Add notes');
+  // Typing re-runs the preview after a pause, and Ship is disabled (so not focusable) while
+  // it loads; wait for the preview of this message before tabbing to Ship.
+  await expect(section(page, 'Preview and ship')).toContainText('Commit subject: Add notes');
+  await expect(page.getByRole('button', { name: 'Ship…' })).toBeEnabled();
   let reached = false;
   for (let i = 0; i < 12 && !reached; i += 1) {
     await page.keyboard.press('Tab');
