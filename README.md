@@ -446,7 +446,8 @@ scripts         release packaging and install verification
 ```sh
 npm ci
 npm test                     # builds, then runs core, CLI (real Git repositories), and web tests
-npm run test:e2e             # browser tests (simulator + console against a real shipgate ui);
+npm run test:e2e             # browser tests (simulator + console against a real shipgate ui,
+                             # including axe-core scans of #/repo in light and dark themes);
                              # needs npm run build first and npx playwright install chromium firefox once
 npm run examples -- --check  # verify examples/README.md against fresh runs
 npm run pack:release && npm run verify:package   # build tarballs, install them offline elsewhere

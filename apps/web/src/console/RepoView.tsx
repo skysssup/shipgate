@@ -463,7 +463,7 @@ function PreviewBody({ preview }: { preview: PreviewResult }) {
 
 function Terminal({ result }: { result: ActionResult }) {
   return (
-    <pre className={cx('terminal', result.ok ? 'tone-ship' : 'tone-hold')} tabIndex={0} aria-label={`Output of ${result.title}`}>
+    <pre className={cx('terminal', result.ok ? 'tone-ship' : 'tone-hold')} tabIndex={0} role="region" aria-label={`Output of ${result.title}`}>
       <code>
         <span className="t-line t-command">
           <span className="t-prompt">$ </span>

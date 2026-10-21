@@ -35,7 +35,7 @@ export function Output({ evaluation, state }: { evaluation: Evaluation; state: S
       meta="From the CLI's own formatter"
       actions={<CopyButton text={transcript} label="Copy output" />}
     >
-      <pre className={cx('terminal', `tone-${report.action}`)} tabIndex={0} aria-label="Simulated output of shipgate ship">
+      <pre className={cx('terminal', `tone-${report.action}`)} tabIndex={0} role="region" aria-label="Simulated output of shipgate ship">
         <code>
           <span className="t-line t-command">
             <span className="t-prompt">$ </span>

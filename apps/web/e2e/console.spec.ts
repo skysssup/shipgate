@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test as base, type Page } from '@playwright/test';
 import { contrastRatios } from './contrast';
 
@@ -427,4 +428,64 @@ test.describe('static build', () => {
     await expect(page.locator('.live-dot')).toHaveCount(0);
     await expect(page).toHaveTitle('Repository console · Shipgate');
   });
+});
+
+test.describe('accessibility (axe)', () => {
+  const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
+  type Result = { id: string; nodes: Array<{ target: unknown; any: Array<{ data?: { messageKey?: string } | null }> }> };
+  const describe = (results: Result[]) => results.map((r) => `${r.id}: ${r.nodes.map((n) => JSON.stringify(n.target)).join(', ')}`);
+  const scan = (page: Page) => new AxeBuilder({ page }).withTags(TAGS).analyze();
+  /**
+   * axe cannot compute backgrounds in the top layer, so it reports text in an open <dialog>
+   * as "partially obscured" (incomplete) rather than measuring it. Those nodes are measured
+   * with the contrast helper instead; anything else incomplete fails the test.
+   */
+  const topLayerContrast = (r: Result) => r.id === 'color-contrast' && r.nodes.every((n) => n.any.some((a) => a.data?.messageKey === 'elmPartiallyObscuring'));
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`#/repo console has no axe violations in the ${colorScheme} theme`, async ({ page, repo }) => {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      await page.goto(repo.url);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+      await enable(page);
+      // A populated page: a result panel with output, a blocking finding, changes, a
+      // Shipgate commit in history, and the undo row.
+      repo.write('greet.js', 'export const greet = () => 1;\n');
+      await page.getByLabel(/Commit message/).fill('Add greet');
+      await expect(section(page, 'Preview and ship')).toContainText('Commit subject: Add greet');
+      await page.getByRole('button', { name: 'Ship…' }).click();
+      await page.getByRole('dialog', { name: 'Ship these changes?' }).getByRole('button', { name: 'Ship', exact: true }).click();
+      await expect(page.getByRole('region', { name: /^Done: shipgate ship/ })).toBeVisible();
+      repo.write('.env', `OPENAI_API_KEY=${KEY}\n`);
+      await page.getByLabel(/Commit message/).fill('');
+      await page.getByRole('button', { name: 'Refresh' }).click();
+      await expect(verdict(page)).toContainText('Credential findings');
+      await expect(section(page, 'History').getByRole('button', { name: 'Undo last ship…' })).toBeVisible();
+
+      const full = await scan(page);
+      expect(full.passes.length).toBeGreaterThan(30);
+      expect(describe(full.violations), `${colorScheme}: violations`).toEqual([]);
+      expect(describe(full.incomplete), `${colorScheme}: needs review`).toEqual([]);
+
+      await section(page, 'History').getByRole('button', { name: 'Undo last ship…' }).click();
+      await expect(page.getByRole('dialog', { name: 'Undo the last ship?' })).toBeVisible();
+      const open = await scan(page);
+      expect(describe(open.violations), `${colorScheme} dialog: violations`).toEqual([]);
+      expect(describe(open.incomplete.filter((r) => !topLayerContrast(r))), `${colorScheme} dialog: needs review`).toEqual([]);
+      const ratios = await contrastRatios(page, 'dialog[open]');
+      expect(ratios.length).toBeGreaterThan(2);
+      for (const { text, ratio } of ratios) expect(ratio, `${colorScheme} dialog: "${text}"`).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test(`#/repo without shipgate ui has no axe violations in the ${colorScheme} theme`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      await page.goto('./#/repo');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Manage a repository from the browser');
+      const results = await scan(page);
+      expect(results.passes.length).toBeGreaterThan(20);
+      expect(describe(results.violations), `${colorScheme}: violations`).toEqual([]);
+      expect(describe(results.incomplete), `${colorScheme}: needs review`).toEqual([]);
+    });
+  }
 });

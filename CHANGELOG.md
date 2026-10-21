@@ -4,6 +4,8 @@
 
 ### Added
 
+- Browser tests run axe-core (`@axe-core/playwright`) on the `#/repo` console, with and without
+  `shipgate ui` and with a dialog open, in the light and dark themes.
 - `shipgate history [--json] [--limit N]`: recent commits on the branch, which ones Shipgate made,
   which ones origin has, and whether `undo` applies. The same report as the console's
   `GET /api/history`.
@@ -20,6 +22,11 @@
   and error states; keyboard, screen-reader, 360 px, and light/dark support. Without `shipgate ui`
   the tab explains how to start it.
 - Get started lists `shipgate preview` and `shipgate ui`.
+
+### Fixed
+
+- The output panels in the console and simulator have `role="region"`, so their `aria-label` is
+  exposed (axe: `aria-prohibited-attr`).
 
 ## 2.2.0 — 2026-10-04
 

@@ -2,10 +2,10 @@ import type { Page } from '@playwright/test';
 
 /**
  * WCAG contrast ratio of every visible text node against its composited background.
- * Shared by the simulator and console specs.
+ * Shared by the simulator and console specs. `root` limits the walk to one element.
  */
-export function contrastRatios(page: Page): Promise<Array<{ text: string; ratio: number }>> {
-  return page.evaluate(() => {
+export function contrastRatios(page: Page, root = 'body'): Promise<Array<{ text: string; ratio: number }>> {
+  return page.evaluate((selector) => {
     const parse = (c: string): number[] => {
       const numbers = (c.match(/[\d.]+/g) ?? []).map(Number);
       return c.startsWith('color(srgb') ? [...numbers.slice(0, 3).map((n) => n * 255), numbers[3] ?? 1] : numbers;
@@ -29,7 +29,7 @@ export function contrastRatios(page: Page): Promise<Array<{ text: string; ratio:
       return out;
     };
     const texts: Element[] = [];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(document.querySelector(selector) ?? document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const parent = node.parentElement;
       if (!parent || !node.textContent?.trim() || texts.includes(parent)) continue;
@@ -44,5 +44,5 @@ export function contrastRatios(page: Page): Promise<Array<{ text: string; ratio:
       const [l1, l2] = [lum(fg), lum(bg)].sort((a, b) => b - a);
       return { text: (el.textContent ?? '').trim().slice(0, 40), ratio: (l1 + 0.05) / (l2 + 0.05) };
     });
-  });
+  }, root);
 }
