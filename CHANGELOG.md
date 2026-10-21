@@ -22,8 +22,28 @@
   and error states; keyboard, screen-reader, 360 px, and light/dark support. Without `shipgate ui`
   the tab explains how to start it.
 - Get started lists `shipgate preview` and `shipgate ui`.
+- The console handles large repositories: the change list renders 100 paths at a time with
+  Show more, and past 10 changes adds a path search and an All/Added/Modified/Deleted filter.
+  History loads 30 more commits at a time up to the server's 200, and past 10 commits adds a
+  filter by subject, author, or SHA prefix (4 or more characters).
+
+### Changed
+
+- In the console, a run flag re-runs the preview at once; the message and task fields still wait
+  350 ms after the last key, which sends one preview per burst of typing.
+- Console layout: changes and findings sit side by side only in a wide preview panel, each change
+  is one line with the directory shortened, phones show the status cards two across, and narrow
+  history tables fold When and Origin under the subject.
 
 ### Fixed
+
+- A long console change list no longer stretches the page with blank scroll: its screen-reader
+  labels escaped the list's scroll box (700 files made the page 28,000 px tall).
+- Console Ship stays focusable while the preview refreshes, so Tab and Enter right after typing a
+  message open the confirmation instead of doing nothing; pressed mid-refresh, it opens once the
+  fresh preview allows the run.
+- A long console change list can be scrolled from the keyboard (axe:
+  `scrollable-region-focusable`).
 
 - Console confirmation dialogs keep Tab and Shift+Tab on their buttons. Chromium let focus
   leave a modal dialog for the browser UI and Firefox stopped on the dialog element itself; an
