@@ -3330,6 +3330,15 @@ details[open] > summary .chevron {
   flex: 1 1 20rem;
 }
 
+.history-tools,
+.history-none {
+  margin-bottom: 0.6rem;
+}
+
+.history-foot {
+  margin-top: 0.6rem;
+}
+
 .history-subject {
   display: flex;
   flex-wrap: wrap;

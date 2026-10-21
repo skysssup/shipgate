@@ -8,6 +8,7 @@ import {
   type RunOptions,
   type StatusReport,
 } from './api';
+import { HISTORY_PAGE } from './model';
 
 export interface Loadable<T> {
   data: T | null;
@@ -61,7 +62,18 @@ export function useConsole(client: ConsoleClient, options: RunOptions) {
   );
 
   const loadStatus = useCallback(() => load('status', setStatus, () => client.status()), [client, load]);
-  const loadHistory = useCallback(() => load('history', setHistory, () => client.history()), [client, load]);
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
+  const historyLimitRef = useRef(historyLimit);
+  const loadHistory = useCallback(() => load('history', setHistory, () => client.history(historyLimitRef.current)), [client, load]);
+  /** Load more commits; later refreshes keep the longer list. */
+  const showMoreHistory = useCallback(
+    (limit: number) => {
+      historyLimitRef.current = limit;
+      setHistoryLimit(limit);
+      return loadHistory();
+    },
+    [loadHistory],
+  );
   const loadPreview = useCallback(() => load('preview', setPreview, () => client.preview(optionsRef.current)), [client, load]);
 
   const refresh = useCallback(async () => {
@@ -108,7 +120,7 @@ export function useConsole(client: ConsoleClient, options: RunOptions) {
   );
 
   return useMemo(
-    () => ({ status, history, preview, busy, result, refreshedAt, refresh, loadPreview, run, dismissResult: () => setResult(null) }),
-    [status, history, preview, busy, result, refreshedAt, refresh, loadPreview, run],
+    () => ({ status, history, historyLimit, preview, busy, result, refreshedAt, refresh, loadPreview, showMoreHistory, run, dismissResult: () => setResult(null) }),
+    [status, history, historyLimit, preview, busy, result, refreshedAt, refresh, loadPreview, showMoreHistory, run],
   );
 }

@@ -27,6 +27,9 @@ import {
   changeCounts,
   changeLabel,
   filterChanges,
+  filterCommits,
+  HISTORY_MAX,
+  nextHistoryLimit,
   splitPath,
   destinationLabel,
   destinationTone,
@@ -643,8 +646,25 @@ function SettingsForm({ status, busy, onSave, onDisable }: { status: StatusRepor
   );
 }
 
-function HistoryTable({ history, onUndo, busy }: { history: HistoryReport; onUndo: () => void; busy: boolean }) {
+function HistoryTable({
+  history,
+  onUndo,
+  busy,
+  limit,
+  loading,
+  onShowMore,
+}: {
+  history: HistoryReport;
+  onUndo: () => void;
+  busy: boolean;
+  limit: number;
+  loading: boolean;
+  onShowMore: (limit: number) => void;
+}) {
   const now = Date.now();
+  const [query, setQuery] = useState('');
+  const searchId = useId();
+  const shown = useMemo(() => filterCommits(history.commits, query), [history.commits, query]);
   if (!history.commits.length) {
     return (
       <div className="empty">
@@ -654,6 +674,10 @@ function HistoryTable({ history, onUndo, busy }: { history: HistoryReport; onUnd
     );
   }
   const head = history.commits[0];
+  const loaded = history.commits.length;
+  const more = nextHistoryLimit(limit, loaded);
+  const filtering = loaded > CHANGE_FILTER_MIN;
+  const narrowed = Boolean(query.trim());
   return (
     <>
       {history.undoCandidate && (
@@ -668,41 +692,86 @@ function HistoryTable({ history, onUndo, busy }: { history: HistoryReport; onUnd
           </Button>
         </div>
       )}
-      <div className="table-wrap">
-        <table className="table history-table">
-          <caption className="sr-only">Recent commits on {history.branch ?? 'HEAD'}, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Commit</th>
-              <th scope="col">Subject</th>
-              <th scope="col">When</th>
-              <th scope="col">Origin</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.commits.map((c) => (
-              <tr key={c.sha}>
-                <th scope="row">
-                  <code title={c.sha}>{c.shortSha}</code>
-                </th>
-                <td>
-                  <span className="history-subject">
-                    {c.subject}
-                    {c.shipgate && <span className="badge tone-ship">Shipgate</span>}
-                    {c.merge && <span className="badge tone-noop">Merge</span>}
-                  </span>
-                  <span className="muted history-author">{c.author}</span>
-                </td>
-                <td>
-                  <time dateTime={c.date} title={new Date(c.date).toLocaleString()}>
-                    {relativeTime(c.date, now)}
-                  </time>
-                </td>
-                <td>{c.onOrigin === null ? <span className="muted">no tracking ref</span> : c.onOrigin ? 'pushed' : <strong>local only</strong>}</td>
+      {filtering && (
+        <div className="change-tools history-tools">
+          <label className="sr-only" htmlFor={searchId}>
+            Filter commits by subject, author, or SHA
+          </label>
+          <span className="search-field">
+            <Search size={13} aria-hidden className="search-icon" />
+            <input
+              id={searchId}
+              type="search"
+              className="input input-sm"
+              placeholder="Filter by subject, author, or SHA"
+              value={query}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </span>
+        </div>
+      )}
+      {shown.length === 0 ? (
+        <div className="change-none history-none">
+          <p className="empty-line">No loaded commits match the filter.</p>
+          <Button size="sm" onClick={() => setQuery('')}>
+            Clear filter
+          </Button>
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table history-table">
+            <caption className="sr-only">Recent commits on {history.branch ?? 'HEAD'}, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Commit</th>
+                <th scope="col">Subject</th>
+                <th scope="col">When</th>
+                <th scope="col">Origin</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((c) => (
+                <tr key={c.sha}>
+                  <th scope="row">
+                    <code title={c.sha}>{c.shortSha}</code>
+                  </th>
+                  <td>
+                    <span className="history-subject">
+                      {c.subject}
+                      {c.shipgate && <span className="badge tone-ship">Shipgate</span>}
+                      {c.merge && <span className="badge tone-noop">Merge</span>}
+                    </span>
+                    <span className="muted history-author">{c.author}</span>
+                  </td>
+                  <td>
+                    <time dateTime={c.date} title={new Date(c.date).toLocaleString()}>
+                      {relativeTime(c.date, now)}
+                    </time>
+                  </td>
+                  <td>{c.onOrigin === null ? <span className="muted">no tracking ref</span> : c.onOrigin ? 'pushed' : <strong>local only</strong>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="change-foot history-foot">
+        <span className="muted" role="status">
+          {narrowed
+            ? `${shown.length} of ${loaded} loaded commits match`
+            : more !== null
+              ? `Newest ${loaded} commits`
+              : loaded >= HISTORY_MAX
+                ? `Newest ${loaded} commits, the most the console lists. Use git log for older ones.`
+                : `All ${loaded} ${loaded === 1 ? 'commit' : 'commits'} on ${history.branch ?? 'HEAD'}`}
+        </span>
+        {more !== null && (
+          <Button size="sm" onClick={() => onShowMore(more)} disabled={loading}>
+            {loading ? 'Loading…' : `Show ${more - loaded} more`}
+          </Button>
+        )}
       </div>
       {history.originRef && <p className="section-note">Pushed state comes from {history.originRef} as of the last fetch or push.</p>}
     </>
@@ -839,7 +908,16 @@ export function RepoView({ session }: { session: ConsoleSession }) {
 
       <Section title="History" className="page-section" meta={c.history.data?.branch ? `Recent commits on ${c.history.data.branch}` : undefined}>
         <Loaded state={c.history} label="history" retry={() => void c.refresh()}>
-          {(h) => <HistoryTable history={h} busy={c.busy !== null} onUndo={() => setPending('undo')} />}
+          {(h) => (
+            <HistoryTable
+              history={h}
+              busy={c.busy !== null}
+              onUndo={() => setPending('undo')}
+              limit={c.historyLimit}
+              loading={c.history.loading}
+              onShowMore={(limit) => void c.showMoreHistory(limit)}
+            />
+          )}
         </Loaded>
       </Section>
 

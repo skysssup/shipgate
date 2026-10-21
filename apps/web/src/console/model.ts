@@ -197,3 +197,28 @@ export function splitPath(path: string): { dir: string; name: string } {
   const slash = path.lastIndexOf('/', path.length - 2);
   return slash < 0 ? { dir: '', name: path } : { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) };
 }
+
+/** Commits per history request, and the most the server returns (shipHistory clamps to 200). */
+export const HISTORY_PAGE = 30;
+export const HISTORY_MAX = 200;
+
+/** The limit for "Show more", or null when the branch has no more commits or the server cap is reached. */
+export function nextHistoryLimit(limit: number, loaded: number): number | null {
+  if (loaded < limit || limit >= HISTORY_MAX) return null;
+  return Math.min(limit + HISTORY_PAGE, HISTORY_MAX);
+}
+
+/**
+ * Commits whose subject or author contains every term of `query` (case-insensitive). A term
+ * of 4 or more characters (git's shortest abbreviation) also matches a SHA prefix, so short
+ * numbers such as "3" don't match random hashes.
+ */
+export function filterCommits<T extends { sha: string; subject: string; author: string }>(commits: readonly T[], query: string): T[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [...commits];
+  return commits.filter((c) => {
+    const text = `${c.subject}\n${c.author}`.toLowerCase();
+    const sha = c.sha.toLowerCase();
+    return terms.every((t) => text.includes(t) || (t.length >= 4 && sha.startsWith(t)));
+  });
+}

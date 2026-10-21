@@ -326,6 +326,39 @@ test('a long change list can be searched, filtered by status, and paged', async 
   expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
 });
 
+test('a long history can be filtered and extended with Show more', async ({ page, repo }) => {
+  for (let i = 1; i <= 40; i += 1) repo.git('commit', '--quiet', '--allow-empty', '-m', `Change ${i}`);
+  await page.goto(repo.url);
+  const history = section(page, 'History');
+  const rows = history.locator('tbody tr');
+  await expect(rows).toHaveCount(30);
+  await expect(rows.first()).toContainText('Change 40');
+  await expect(history.getByRole('status')).toHaveText('Newest 30 commits');
+  await history.getByRole('button', { name: 'Show 30 more' }).click();
+  await expect(rows).toHaveCount(41);
+  await expect(rows.last()).toContainText('Initial commit');
+  await expect(history.getByRole('status')).toHaveText('All 41 commits on main');
+  await expect(history.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
+  // A refresh keeps the longer list.
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+  await expect(rows).toHaveCount(41);
+
+  const search = history.getByLabel(/Filter commits/);
+  // Every term must match: Change 3, 13, 23, and 30 to 39.
+  await search.fill('change 3');
+  await expect(rows).toHaveCount(13);
+  await expect(history.getByRole('status')).toHaveText('13 of 41 loaded commits match');
+  const sha = repo.git('rev-parse', 'HEAD~5');
+  await search.fill(sha.slice(0, 7).toUpperCase());
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Change 35');
+  await search.fill('no such commit');
+  await expect(history).toContainText('No loaded commits match the filter.');
+  await history.getByRole('button', { name: 'Clear filter' }).click();
+  await expect(rows).toHaveCount(41);
+});
+
 test('Ship keeps focus while the preview refreshes and opens once it is current', async ({ page, repo }) => {
   await page.goto(repo.url);
   await enable(page);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeCounts, filterChanges, splitPath } from '../src/console/model';
+import { changeCounts, filterChanges, filterCommits, nextHistoryLimit, splitPath } from '../src/console/model';
 
 const changes = [
   { path: 'src/app.ts', status: 'M' },
@@ -57,5 +57,47 @@ describe('splitPath', () => {
   it('keeps a trailing slash with the name (a submodule or directory entry)', () => {
     expect(splitPath('vendor/lib/')).toEqual({ dir: 'vendor/', name: 'lib/' });
     expect(splitPath('lib/')).toEqual({ dir: '', name: 'lib/' });
+  });
+});
+
+describe('nextHistoryLimit', () => {
+  it('asks for one more page while every requested commit came back', () => {
+    expect(nextHistoryLimit(30, 30)).toBe(60);
+    expect(nextHistoryLimit(180, 180)).toBe(200);
+  });
+  it('stops at the end of the branch', () => {
+    expect(nextHistoryLimit(30, 12)).toBeNull();
+    expect(nextHistoryLimit(60, 41)).toBeNull();
+  });
+  it('stops at the server cap', () => {
+    expect(nextHistoryLimit(200, 200)).toBeNull();
+  });
+});
+
+describe('filterCommits', () => {
+  const commits = [
+    { sha: 'abc1234ffff', subject: 'Add greet helper', author: 'Ada Lovelace' },
+    { sha: 'def5678eeee', subject: 'Fix typo in README', author: 'Grace Hopper' },
+    { sha: '0123abcdddd', subject: 'Merge branch main', author: 'Ada Lovelace' },
+  ];
+  it('returns a copy of everything for an empty query', () => {
+    const all = filterCommits(commits, ' ');
+    expect(all).toEqual(commits);
+    expect(all).not.toBe(commits);
+  });
+  it('matches subject and author case-insensitively', () => {
+    expect(filterCommits(commits, 'readme').map((c) => c.sha)).toEqual(['def5678eeee']);
+    expect(filterCommits(commits, 'ada').map((c) => c.sha)).toEqual(['abc1234ffff', '0123abcdddd']);
+  });
+  it('matches a SHA by prefix only', () => {
+    expect(filterCommits(commits, 'ABC1').map((c) => c.sha)).toEqual(['abc1234ffff']);
+    expect(filterCommits(commits, '5678')).toEqual([]);
+  });
+  it('needs at least 4 characters to match a SHA', () => {
+    expect(filterCommits(commits, 'abc')).toEqual([]);
+    expect(filterCommits(commits, 'abc1').map((c) => c.sha)).toEqual(['abc1234ffff']);
+  });
+  it('requires every term', () => {
+    expect(filterCommits(commits, 'ada merge').map((c) => c.sha)).toEqual(['0123abcdddd']);
   });
 });
