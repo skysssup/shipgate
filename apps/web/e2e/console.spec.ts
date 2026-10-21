@@ -311,6 +311,17 @@ for (const width of [360, 768, 1280]) {
   });
 }
 
+test('a long change list scrolls inside its box instead of stretching the page', async ({ page, repo }) => {
+  for (let i = 0; i < 300; i += 1) repo.write(`bulk/file-${i}.txt`, `${i}\n`);
+  await page.goto(repo.url);
+  await expect(section(page, 'Preview and ship').getByRole('region', { name: /Changes/ }).locator('.count')).toHaveText('300');
+  const [pageHeight, contentBottom] = await page.evaluate(() => [
+    document.documentElement.scrollHeight,
+    Math.ceil(document.querySelector('.app')!.getBoundingClientRect().bottom + window.scrollY),
+  ]);
+  expect(pageHeight).toBeLessThanOrEqual(contentBottom + 2);
+});
+
 test.describe('static build', () => {
   test('without shipgate ui, the Repository view explains how to start it', async ({ page }) => {
     await page.goto('./#/repo');
