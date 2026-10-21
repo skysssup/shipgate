@@ -287,6 +287,45 @@ test('works with the keyboard alone', async ({ page, repo }) => {
   await expect(page.locator('.console-announcer')).toContainText('shipgate ship -m "Add notes"');
 });
 
+test('a long change list can be searched, filtered by status, and paged', async ({ page, repo }) => {
+  for (let i = 0; i < 125; i += 1) repo.write(`bulk/file-${i}.txt`, `${i}\n`);
+  repo.write('README.md', 'changed\n');
+  await page.goto(repo.url);
+  const changes = section(page, 'Preview and ship').getByRole('region', { name: /Changes/ });
+  const rows = changes.locator('.change');
+  await expect(changes.locator('.count')).toHaveText('126');
+  await expect(rows).toHaveCount(100);
+  await expect(changes.getByRole('status')).toHaveText('Showing 100 of 126 paths');
+  await changes.getByRole('button', { name: 'Show 26 more' }).click();
+  await expect(rows).toHaveCount(126);
+  await expect(changes.getByRole('status')).toHaveText('126 paths');
+
+  const search = changes.getByLabel('Filter changed paths');
+  await search.fill('FILE-12');
+  await expect(rows).toHaveCount(6);
+  await expect(changes.getByRole('status')).toHaveText('6 of 126 paths match');
+  // The filter survives a refresh of the preview.
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+  await expect(search).toHaveValue('FILE-12');
+  await expect(rows).toHaveCount(6);
+
+  await changes.getByRole('radio', { name: 'Modified 1' }).click();
+  await expect(changes).toContainText('No changed paths match the filter.');
+  await changes.getByRole('button', { name: 'Clear filter' }).click();
+  await expect(search).toHaveValue('');
+  await expect(changes.getByRole('radio', { name: 'All 126' })).toBeChecked();
+  await expect(rows).toHaveCount(100);
+  await changes.getByRole('radio', { name: 'Modified 1' }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toHaveText(/README\.md/);
+
+  // The search and status filter wrap on a narrow phone instead of widening the page.
+  await page.setViewportSize({ width: 360, height: 800 });
+  const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+});
+
 test('Ship keeps focus while the preview refreshes and opens once it is current', async ({ page, repo }) => {
   await page.goto(repo.url);
   await enable(page);

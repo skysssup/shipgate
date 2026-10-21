@@ -3143,6 +3143,75 @@ details[open] > summary .chevron {
   text-align: center;
 }
 
+.change-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.change-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+
+.change-tools .token-choice {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.search-field {
+  position: relative;
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.55rem;
+  color: var(--text-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-field .input {
+  padding-left: 1.75rem;
+}
+
+.input-sm {
+  height: 1.75rem;
+  font-size: var(--text-xs);
+}
+
+.change-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.change-dir {
+  color: var(--text-3);
+}
+
+.change-name {
+  color: var(--text);
+}
+
+.change-foot,
+.change-none {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.6rem;
+  font-size: var(--text-xs);
+}
+
+.change-none .empty-line {
+  padding: 0.35rem 0;
+}
+
 .change-list {
   /* Contain the absolutely positioned .sr-only labels; otherwise they escape the scroller and stretch the page. */
   position: relative;

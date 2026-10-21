@@ -8,6 +8,7 @@ import {
   Lock,
   RefreshCw,
   Rocket,
+  Search,
   Settings2,
   ShieldCheck,
   Undo2,
@@ -21,7 +22,12 @@ import { ActionBadge, Button, CopyButton, cx, FlagToken, InlineCode, Section, To
 import { createClient, type ConsoleSession, type HistoryReport, type PreviewResult, type RunOptions, type StatusReport } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
+  CHANGE_FILTER_MIN,
+  CHANGE_PAGE,
+  changeCounts,
   changeLabel,
+  filterChanges,
+  splitPath,
   destinationLabel,
   destinationTone,
   draftFromStatus,
@@ -35,6 +41,7 @@ import {
   settingsProblems,
   settingsRequest,
   shipReadiness,
+  type Change,
   type SettingsDraft,
   type Tone,
 } from './model';
@@ -237,6 +244,114 @@ function RunOptionsForm({ options, onChange }: { options: RunOptions; onChange: 
   );
 }
 
+const STATUS_FILTER_LABEL: Record<string, string> = { A: 'Added', M: 'Modified', D: 'Deleted', T: 'Type' };
+
+/** The changed paths, with a path search, a status filter, and "Show more" for long lists. */
+function ChangeList({ changes }: { changes: Change[] }) {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const [limit, setLimit] = useState(CHANGE_PAGE);
+  const searchId = useId();
+  const counts = useMemo(() => changeCounts(changes), [changes]);
+  const shown = useMemo(() => filterChanges(changes, query, status), [changes, query, status]);
+  // A status that disappears after a refresh would leave the list empty for no visible reason.
+  const activeStatus = status === 'all' || counts.some((c) => c.status === status) ? status : 'all';
+  useEffect(() => {
+    if (activeStatus !== status) setStatus(activeStatus);
+  }, [activeStatus, status]);
+
+  if (!changes.length) return <p className="empty-line">No changes. The working tree matches HEAD.</p>;
+  const filtering = changes.length > CHANGE_FILTER_MIN;
+  const visible = shown.slice(0, limit);
+  const narrowed = Boolean(query.trim()) || activeStatus !== 'all';
+  const restart = (update: () => void) => {
+    update();
+    setLimit(CHANGE_PAGE);
+  };
+  return (
+    <div className="change-browser">
+      {filtering && (
+        <div className="change-tools">
+          <label className="sr-only" htmlFor={searchId}>
+            Filter changed paths
+          </label>
+          <span className="search-field">
+            <Search size={13} aria-hidden className="search-icon" />
+            <input
+              id={searchId}
+              type="search"
+              className="input input-sm mono"
+              placeholder="Filter paths"
+              value={query}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => restart(() => setQuery(event.target.value))}
+            />
+          </span>
+          {counts.length > 1 && (
+            <TokenChoice
+              label="Show changes with status"
+              value={activeStatus}
+              options={[
+                { value: 'all', label: `All ${changes.length}` },
+                ...counts.map(({ status: s, count }) => ({ value: s, label: `${STATUS_FILTER_LABEL[s] ?? s} ${count}` })),
+              ]}
+              onChange={(next) => restart(() => setStatus(next))}
+            />
+          )}
+        </div>
+      )}
+      {visible.length ? (
+        <ul className="change-list" aria-label={narrowed ? `Changed paths matching the filter` : 'Changed paths'}>
+          {visible.map((change) => {
+            const { dir, name } = splitPath(change.path);
+            return (
+              <li key={change.path} className="change" title={change.path}>
+                <span className={cx('change-status', `change-${change.status}`)} title={changeLabel(change.status)}>
+                  <span aria-hidden>{change.status}</span>
+                  <span className="sr-only">{changeLabel(change.status)}</span>
+                </span>
+                <span className="change-path mono">
+                  {dir && <span className="change-dir">{dir}</span>}
+                  <span className="change-name">{name}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="change-none">
+          <p className="empty-line">No changed paths match the filter.</p>
+          <Button size="sm" onClick={() =>
+              restart(() => {
+                setQuery('');
+                setStatus('all');
+              })
+            }>
+            Clear filter
+          </Button>
+        </div>
+      )}
+      {(filtering || shown.length > visible.length) && (
+        <div className="change-foot">
+          <span className="muted" role="status">
+            {shown.length > visible.length
+              ? `Showing ${visible.length} of ${shown.length}${narrowed ? ' matching' : ''} paths`
+              : narrowed
+                ? `${shown.length} of ${changes.length} paths match`
+                : `${changes.length} paths`}
+          </span>
+          {shown.length > visible.length && (
+            <Button size="sm" onClick={() => setLimit((n) => n + CHANGE_PAGE)}>
+              Show {Math.min(CHANGE_PAGE, shown.length - visible.length)} more
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PreviewBody({ preview }: { preview: PreviewResult }) {
   const action: PlanAction = preview.plan?.action ?? 'hold';
   return (
@@ -290,21 +405,7 @@ function PreviewBody({ preview }: { preview: PreviewResult }) {
           <h3 className="subsection-title" id="changes-heading">
             <FileDiff size={14} aria-hidden /> Changes <span className="count">{preview.changes.length}</span>
           </h3>
-          {preview.changes.length ? (
-            <ul className="change-list">
-              {preview.changes.map((change) => (
-                <li key={change.path} className="change">
-                  <span className={cx('change-status', `change-${change.status}`)} title={changeLabel(change.status)}>
-                    <span aria-hidden>{change.status}</span>
-                    <span className="sr-only">{changeLabel(change.status)}</span>
-                  </span>
-                  <span className="mono break">{change.path}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-line">No changes. The working tree matches HEAD.</p>
-          )}
+          <ChangeList changes={preview.changes} />
           {preview.subject && preview.plan?.action === 'ship' && (
             <p className="preview-subject">
               Commit subject: <code>{preview.subject}</code>

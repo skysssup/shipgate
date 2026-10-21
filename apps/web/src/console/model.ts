@@ -162,3 +162,38 @@ const VISIBILITY_LABEL: Record<string, string> = {
 export function destinationLabel(status: StatusReport): string {
   return VISIBILITY_LABEL[status.destination?.visibility ?? 'none'] ?? 'Unknown';
 }
+
+export interface Change {
+  path: string;
+  status: string;
+}
+
+/** How many changed paths the list renders before "Show more". */
+export const CHANGE_PAGE = 100;
+/** Search and status filters appear once the list is longer than this. */
+export const CHANGE_FILTER_MIN = 10;
+
+const STATUS_ORDER = ['A', 'M', 'D', 'T'];
+
+/** Statuses present in the change list, in a stable order, with how many paths have each. */
+export function changeCounts(changes: readonly Change[]): Array<{ status: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const { status } of changes) counts.set(status, (counts.get(status) ?? 0) + 1);
+  const rank = (s: string) => (STATUS_ORDER.includes(s) ? STATUS_ORDER.indexOf(s) : STATUS_ORDER.length);
+  return [...counts].map(([status, count]) => ({ status, count })).sort((a, b) => rank(a.status) - rank(b.status) || a.status.localeCompare(b.status));
+}
+
+/**
+ * Changes whose path contains every whitespace-separated term of `query` (case-insensitive),
+ * limited to one status unless `status` is 'all'.
+ */
+export function filterChanges<T extends Change>(changes: readonly T[], query: string, status: string = 'all'): T[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return changes.filter((c) => (status === 'all' || c.status === status) && terms.every((t) => c.path.toLowerCase().includes(t)));
+}
+
+/** Directory (with its trailing slash) and file name, so the list can de-emphasize the directory. */
+export function splitPath(path: string): { dir: string; name: string } {
+  const slash = path.lastIndexOf('/', path.length - 2);
+  return slash < 0 ? { dir: '', name: path } : { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) };
+}
