@@ -22,6 +22,13 @@ describe('simulateShip', () => {
       '  result   Nothing was committed. The staging area is back to how it was before the run.',
       '  next     Remove the credential and keep .env files out of Git (.gitignore), or rerun with --force-secrets if it is a false positive.',
     ],
+    'database-password': [
+      'shipgate: BLOCKED — Credential findings block this run.',
+      '  finding  database.config.example:1  connection-password (high)  synth…',
+      '  reason   1 high-confidence credential finding: balanced blocks every finding.',
+      '  result   Nothing was committed. The staging area is back to how it was before the run.',
+      '  next     Remove the credential, or rerun with --force-secrets if it is a false positive.',
+    ],
     'placeholder-template': [
       'shipgate: SHIPPED — Pushed 1a2b3c4 to origin/main.',
       '  commit   1a2b3c4 update .env.example, config.ts',

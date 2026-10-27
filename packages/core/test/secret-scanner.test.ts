@@ -244,6 +244,7 @@ describe('scanTextForSecrets', () => {
 
 /** One synthetic positive sample per rule, assembled at runtime. */
 const SAMPLES: Record<string, { content: string; value: string }> = {
+  'connection-password': { content: 'postgres://demo:synthetic-demo-password@localhost/example', value: 'synthetic-demo-password' },
   'aws-access-key': { content: `id=${['AKIA', 'Z7Q4MNB2XK9PL3RT'].join('')}`, value: ['AKIA', 'Z7Q4MNB2XK9PL3RT'].join('') },
   'aws-secret-key': {
     content: `aws_secret_access_key = ${['wJalrXUtnFEMI', 'K7MDENGbPxRfiCYzEXAMPLEKEY12'].join('/')}`,

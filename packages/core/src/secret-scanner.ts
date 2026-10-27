@@ -47,6 +47,13 @@ const ENV_FILENAME = /(^|[/\\])\.env(\.|$)/i;
 
 const PATTERN_RULES: PatternRule[] = [
   {
+    id: 'connection-password',
+    confidence: 'high',
+    matches: 'Passwords embedded in PostgreSQL, MySQL, MongoDB, Redis, AMQP, and SQL Server connection URLs',
+    pattern: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|rediss?|amqps?|mssql):\/\/[^\s:@/"'`<>]*:([^\s@/"'`<>]+)@/gi,
+    valueGroup: 1,
+  },
+  {
     id: 'aws-access-key',
     confidence: 'high',
     matches: 'AWS access key ids (`AKIA…`, `ASIA…`)',
@@ -165,6 +172,11 @@ function isPlaceholderMatch(rule: PatternRule, match: RegExpExecArray, content: 
     return end !== -1 && /YOUR|EXAMPLE|PLACEHOLDER|REDACTED/i.test(body);
   }
   const value = matchedValue(rule, match);
+  if (rule.id === 'connection-password') {
+    let decoded = value;
+    try { decoded = decodeURIComponent(value); } catch { /* malformed escaping is still a credential */ }
+    return isPlaceholderValue(decoded);
+  }
   const body = rule.prefix ? value.replace(rule.prefix, '') : value;
   return isPlaceholderValue(value) || isPlaceholderValue(body);
 }
@@ -219,7 +231,8 @@ export function locateSecrets(content: string): SecretMatch[] {
   for (const rule of PATTERN_RULES) {
     for (const match of ruleMatches(rule, content)) {
       const value = matchedValue(rule, match);
-      let from = match.index + (rule.valueGroup ? match[0].indexOf(value) : 0);
+      // lastIndexOf handles a password identical to the scheme or username.
+      let from = match.index + (rule.valueGroup ? match[0].lastIndexOf(value) : 0);
       let to = from + value.length;
       if (rule.id === 'private-key-pem') {
         const block = new RegExp(PEM_BLOCK.source, 'y');
@@ -262,7 +275,9 @@ export function redactSecretsInText(text: string): string {
     if (rule.id === 'private-key-pem') continue;
     out = out.replace(new RegExp(rule.pattern.source, rule.pattern.flags), (match: string, ...groups: unknown[]) => {
       const value = rule.valueGroup ? groups[rule.valueGroup - 1] : undefined;
-      return typeof value === 'string' ? match.replace(value, '[REDACTED]') : '[REDACTED]';
+      if (typeof value !== 'string') return '[REDACTED]';
+      const from = match.lastIndexOf(value);
+      return `${match.slice(0, from)}[REDACTED]${match.slice(from + value.length)}`;
     });
   }
   return out;

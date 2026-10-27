@@ -73,6 +73,13 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
     facts: baseFacts,
   },
   {
+    id: 'database-password',
+    title: 'Password in a database URL',
+    summary: 'A database connection URL contains a synthetic password, even in a template file.',
+    files: [{ path: 'database.config.example', content: 'DATABASE_URL=postgres://demo:synthetic-demo-password@localhost/example\n' }],
+    facts: baseFacts,
+  },
+  {
     id: 'medium-jwt',
     title: 'Sample JWT in a test fixture',
     summary: 'A test fixture contains a JWT, a medium-confidence pattern.',
@@ -119,6 +126,7 @@ const join = (parts: string[], separator = '') => parts.join(separator);
  * Values are assembled at runtime and are not real credentials.
  */
 export const RULE_SAMPLES: Record<string, ScanFile> = {
+  'connection-password': { path: 'database.config', content: 'postgres://demo:synthetic-demo-password@localhost/example' },
   'aws-access-key': {
     path: 'deploy/aws.ini',
     content: `[deploy]\naws_access_key_id = ${join(['AKIA', 'Z7Q4MNB2XK9PL3RT'])}\nregion = eu-west-1\n`,

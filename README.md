@@ -308,6 +308,7 @@ Stop hooks run when a turn ends. They do not know whether another agent is still
 
 | Rule | Confidence | Matches |
 | --- | --- | --- |
+| `connection-password` | high | Passwords embedded in PostgreSQL, MySQL, MongoDB, Redis, AMQP, and SQL Server connection URLs |
 | `aws-access-key` | high | AWS access key ids (`AKIA…`, `ASIA…`) |
 | `aws-secret-key` | medium | 40-character values assigned to `aws_secret_access_key` |
 | `openai-key` | high | `sk-…` keys, including `sk-proj-` |

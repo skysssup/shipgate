@@ -15,6 +15,7 @@ const TOKEN = ['ghp', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'].join('_');
 const EXPECTED: Record<string, { verdict: string; summary: string }> = {
   'clean-change': { verdict: 'Ship', summary: 'The balanced policy allows this run.' },
   'credential-in-env': { verdict: 'Block', summary: 'Credential findings block this run.' },
+  'database-password': { verdict: 'Block', summary: 'Credential findings block this run.' },
   'placeholder-template': { verdict: 'Ship', summary: 'The balanced policy allows this run.' },
   'medium-jwt': { verdict: 'Block', summary: 'Credential findings block this run.' },
   'public-repo': { verdict: 'Block', summary: 'Strict policy blocks a public destination until you acknowledge it.' },
@@ -311,7 +312,7 @@ test('the rules view lists every rule and tries one in the simulator', async ({ 
   await page.getByRole('link', { name: 'Rules' }).click();
   await expect(page).toHaveTitle('Credential rules and policy · Shipgate');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
-  await expect(page.locator('.rules-table tbody tr')).toHaveCount(12);
+  await expect(page.locator('.rules-table tbody tr')).toHaveCount(13);
   const policy = page.locator('.policy-table');
   await expect(policy.getByRole('row', { name: /Medium-confidence finding/ })).toContainText('Allows, with a warning');
   await page.getByRole('button', { name: 'Try npm-token in the simulator' }).click();

@@ -8,6 +8,7 @@ import type { SafetyLevel } from '../src/types.js';
 const EXPECTED: Record<string, { action: string; code: string; findings: string[] }> = {
   'clean-change': { action: 'ship', code: 'clear', findings: [] },
   'credential-in-env': { action: 'block', code: 'credentials', findings: ['openai-key', 'dotenv-file'] },
+  'database-password': { action: 'block', code: 'credentials', findings: ['connection-password'] },
   'placeholder-template': { action: 'ship', code: 'clear', findings: [] },
   'medium-jwt': { action: 'block', code: 'credentials', findings: ['jwt'] },
   'public-repo': { action: 'block', code: 'public-destination', findings: [] },
