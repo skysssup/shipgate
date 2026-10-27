@@ -2,7 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Package scripts invoke npm through Node rather than interpolating arguments through a Windows shell.
+- Updated development dependency patches clear the current npm audit findings.
+
 ### Added
+
+- Passwords in database connection URLs are high-confidence findings. PostgreSQL, MySQL, MongoDB, Redis, AMQP, and SQL Server URLs are covered in staged files, messages, prompt redaction, and the browser simulator. A new synthetic database URL example demonstrates the block.
+- Generated commit subjects redact credential-shaped filenames and remove embedded newlines.
 
 - Browser tests run axe-core (`@axe-core/playwright`) on the `#/repo` console, with and without
   `shipgate ui` and with a dialog open, in the light and dark themes.
