@@ -3,7 +3,7 @@
 // and exercise them the way a user would. Run after `npm run pack:release`.
 //   node scripts/verify-package.mjs [release-dir]
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,12 +14,14 @@ const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const cliTarball = join(release, `shipgate-cli-${version}.tgz`);
 const coreTarball = join(release, `shipgate-core-${version}.tgz`);
 const isWindows = process.platform === 'win32';
-const npm = isWindows ? 'npm.cmd' : 'npm';
+const npm = 'npm';
+const npmCli = process.env.npm_execpath ?? join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
 const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'shipgate-verify-')));
 const results = [];
 
 function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: isWindows && cmd.endsWith('.cmd'), ...opts });
+  if (cmd === npm && existsSync(npmCli)) return run(process.execPath, [npmCli, ...args], opts);
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 }
 function check(name, fn) {
   fn();

@@ -16,7 +16,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'release');
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const { version } = readJson(join(root, 'package.json'));
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCli = process.env.npm_execpath ?? join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
 
 for (const required of ['packages/core/dist/index.js', 'packages/cli/dist/bin.js', 'apps/web/dist/index.html']) {
   if (!existsSync(join(root, required))) throw new Error(`${required} is missing; run npm run build first`);
@@ -30,7 +30,8 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out);
 
 function pack(dir) {
-  const [info] = JSON.parse(execFileSync(npm, ['pack', '--json', '--pack-destination', out], { cwd: dir, encoding: 'utf8', shell: process.platform === 'win32' }));
+  const args = ['pack', '--json', '--pack-destination', out];
+  const [info] = JSON.parse(execFileSync(existsSync(npmCli) ? process.execPath : 'npm', existsSync(npmCli) ? [npmCli, ...args] : args, { cwd: dir, encoding: 'utf8' }));
   return join(out, info.filename);
 }
 
