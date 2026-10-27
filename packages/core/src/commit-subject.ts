@@ -1,4 +1,4 @@
-import { scanTextForSecrets } from './secret-scanner.js';
+import { redactSecretsInText, scanTextForSecrets } from './secret-scanner.js';
 
 export const SHIPPED_BY_TRAILER = 'Shipped-by: shipgate';
 
@@ -33,7 +33,7 @@ export function buildCommitMessage(input: SubjectInput): {
     subject = prompt.replace(/\s+/g, ' ');
     source = 'prompt';
   } else if (input.changedFiles?.length) {
-    const names = input.changedFiles.map((f) => f.split(/[/\\]/).pop() || f);
+    const names = input.changedFiles.map((f) => redactSecretsInText(f.split(/[/\\]/).pop() || f).replace(/[\r\n\t]/g, ' '));
     const extra = names.length > 5 ? ` (+${names.length - 5})` : '';
     subject = `update ${names.slice(0, 5).join(', ')}${extra}`;
     source = 'files';

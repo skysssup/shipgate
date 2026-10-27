@@ -4,6 +4,12 @@ import { buildCommitMessage, hasShipgateTrailer, SHIPPED_BY_TRAILER } from '../s
 const syntheticGithubToken = ['ghp', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab'].join('_');
 
 describe('buildCommitMessage', () => {
+  it('does not leak credentials or newlines from generated filename subjects', () => {
+    const r = buildCommitMessage({ changedFiles: [`src/${syntheticGithubToken}.ts`, 'file\nforged-trailer.ts'] });
+    expect(r.subject).not.toContain(syntheticGithubToken);
+    expect(r.subject).not.toContain('\n');
+    expect(r.subject).toContain('[REDACTED]');
+  });
   it('prefers an explicit message over the prompt and files', () => {
     const r = buildCommitMessage({ explicitMessage: 'feat: add login', promptText: 'ignore me', changedFiles: ['a.ts'] });
     expect(r).toEqual({ subject: 'feat: add login', fullMessage: `feat: add login\n\n${SHIPPED_BY_TRAILER}\n`, source: 'explicit' });
