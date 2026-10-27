@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Repository status details wrap long remote paths, preventing horizontal overflow and overlapping text on Windows and narrow screens.
+- Browser test fixtures wait for the console process to close before deleting its repository, and allow bounded additional time for Windows Git operations.
+
 - Package scripts invoke npm through Node rather than interpolating arguments through a Windows shell.
 - Updated development dependency patches clear the current npm audit findings.
 

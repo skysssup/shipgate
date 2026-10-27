@@ -2927,6 +2927,8 @@ details[open] > summary .chevron {
 .card-detail {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
   gap: 0.25rem;
   color: var(--text-2);
   font-size: var(--text-xs);
