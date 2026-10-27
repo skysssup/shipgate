@@ -4,6 +4,9 @@ const port = Number(process.env.SIMULATOR_PORT ?? 4317);
 
 export default defineConfig({
   testDir: 'e2e',
+  // Real-repository console tests spawn Git repeatedly; Windows process startup is slower.
+  timeout: process.platform === 'win32' ? 120_000 : 30_000,
+  expect: { timeout: process.platform === 'win32' ? 15_000 : 5_000 },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

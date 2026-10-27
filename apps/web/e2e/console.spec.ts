@@ -1,5 +1,7 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,8 +92,13 @@ const test = base.extend<{ repo: Repo }>({
       stop: () => child.kill(),
     };
     await use(repo);
-    child.kill();
-    rmSync(sandbox, { recursive: true, force: true });
+    if (child.exitCode === null && child.signalCode === null) {
+      const closed = once(child, 'close');
+      child.kill();
+      await closed;
+    }
+    // Let Windows release process and Git handles before removing the disposable repository.
+    await rm(sandbox, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   },
 });
 
